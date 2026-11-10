@@ -1,0 +1,22 @@
+# i-d-template working files
+/lib
+/draft-*.xml
+/draft-*.html
+/draft-*.txt
+/draft-*.pdf
+/.targets.mk
+/versioned/
+/.refcache
+/.venv/
+/.gems/
+/node_modules/
+
+# Python
+__pycache__/
+*.pyc
+/python/.venv/
+/python/build/
+/python/*.egg-info/
+
+# OS
+.DS_Store

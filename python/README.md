@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 The ML-DSA-65 signatures on the test certificates are verified only when the installed
 `cryptography` package supports ML-DSA. 50.0.2 with OpenSSL 4.0.3 does; older versions skip that
-one test.
+test, and `generate_vectors.py` needs ML-DSA too (see below).
 
 ## Running the tests
 
@@ -33,7 +33,8 @@ From this directory:
 python3 -m unittest discover -s tests -v
 ```
 
-The suite takes about a minute. It covers:
+The suite takes about a minute and a half, or about a minute when `cryptography` has no ML-DSA and
+the tests that need it are skipped. It covers:
 
 - `test_frodokem.py`: FrodoKEM against the first record of the FrodoKEM team's KAT files for all four
   parameter sets, using the NIST AES-256 CTR_DRBG. It also checks wrong lengths and implicit rejection.
@@ -45,6 +46,39 @@ The suite takes about a minute. It covers:
   ciphertexts.
 - `test_cms.py`: the two CMS examples in `../vectors`, CMS round trips for all eight algorithms,
   and the KEMRecipientInfo field checks (version, kem, kdf, kekLength, wrap, ukm, rid).
+- `test_generate.py`: runs `generate_vectors.py` and reads its output back. It is skipped when
+  `cryptography` has no ML-DSA.
+
+## Generating vectors for another implementation
+
+`../vectors` was written by the Java prototype; `generate_vectors.py` writes the same kind of
+vectors from this implementation, so another implementation can be checked against it:
+
+```
+python3 generate_vectors.py OUTPUT_DIR
+```
+
+It takes about 25 seconds and needs a `cryptography` package with ML-DSA (tested with 50.0.2),
+because a fresh ML-DSA-65 CA issues the certificates. Every run makes new keys. Each value is
+checked with this implementation before it is written. It writes two files:
+
+- `testvectors.json`: one test case per algorithm, in the layout of `../vectors/testvectors.json`
+  (see [../vectors/README.md](../vectors/README.md)), with one more field, `dk_pkcs8_v2`: the
+  private key as a version 2 OneAsymmetricKey that also carries the public key.
+- `cms.json`: a list of 13 CMS messages, each an object with `label`, `recipients` (the `tcId`s of
+  the test cases whose keys can open it), `content` and `cms` (both base64; `cms` is a DER
+  ContentInfo). The content is always `Hello, world!`. The messages are:
+  - EnvelopedData with AES-256-CBC, the default wrap and an issuerAndSerialNumber rid, one for each
+    algorithm.
+  - EnvelopedData with a subjectKeyIdentifier rid, one with a ukm, and one with AES-Wrap-256 for a
+    FrodoKEM-976 composite.
+  - AuthEnvelopedData with AES-256-GCM.
+  - EnvelopedData with two recipients.
+
+Output from this script has been read back by the Java prototype. Every certificate verified, the
+SubjectPublicKeyInfo and version 1 OneAsymmetricKey encodings re-encoded to the same bytes, the
+version 2 encoding was accepted, every ciphertext decapsulated to `k`, and every message decrypted
+to its content.
 
 ## Choices this implementation makes
 

@@ -1,6 +1,7 @@
-"""KEMRecipientInfo (draft-song-lamps-cms-composite-frodokem-01): the two CMS examples in
+"""KEMRecipientInfo (draft-song-lamps-cms-composite-frodokem-02): the CMS examples and messages in
 ../vectors, round trips for all eight algorithms, and the field checks."""
 
+import json
 import os
 import unittest
 
@@ -54,8 +55,8 @@ def tamper_kemri(message, edit):
 class CMSVectorTest(unittest.TestCase):
 
     def test_vector_examples(self):
-        for name, wrap, kek_length in (("FrodoKEM976-X25519-SHA3-256", oids.ID_AES192_WRAP, 24),
-                                       ("FrodoKEM1344-X448-SHA3-256", oids.ID_AES256_WRAP, 32)):
+        for name, wrap, kek_length in (("FrodoKEM976-SHAKE-X25519-SHA3-256", oids.ID_AES256_WRAP, 32),
+                                       ("FrodoKEM1344-SHAKE-X448-SHA3-256", oids.ID_AES256_WRAP, 32)):
             with self.subTest(name):
                 base = os.path.join(util.VECTORS, "cms-" + name)
                 cert = pkix.Certificate(util.pem(base + "-recipient-cert.pem"))
@@ -67,13 +68,29 @@ class CMSVectorTest(unittest.TestCase):
                 self.assertEqual((d["wrap"], d["kekLength"], d["ukm"], d["version"], d["rid"]),
                                  (wrap, kek_length, None, 3, "issuerAndSerialNumber"))
                 self.assertEqual(d["contentEncryptionAlgorithm"], oids.ID_AES256_CBC)
+                # the recipient is the test case of the same algorithm in testvectors.json
+                self.assertEqual(cert.der, vector_recipient("id-" + name)[0].der)
 
     def test_vector_example_with_another_key_fails(self):
-        base = os.path.join(util.VECTORS, "cms-FrodoKEM976-X25519-SHA3-256")
+        base = os.path.join(util.VECTORS, "cms-FrodoKEM976-SHAKE-X25519-SHA3-256")
         cert = pkix.Certificate(util.pem(base + "-recipient-cert.pem"))
-        alg = composite.algorithm("id-FrodoKEM976-X25519-SHA3-256")
+        alg = composite.algorithm("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
         _, other_dk = composite.keygen(alg)
         self.assertRaises(CMSError, cms.open_envelope, util.pem(base + "-enveloped.pem"), cert, other_dk, alg)
+
+    def test_messages(self):
+        with open(os.path.join(util.VECTORS, "cms.json")) as fh:
+            messages = json.load(fh)
+        self.assertEqual(len(messages), 13)
+        for m in messages:
+            for tc_id in m["recipients"]:
+                with self.subTest(label=m["label"], recipient=tc_id):
+                    cert, alg, dk = vector_recipient(tc_id)
+                    content, d = cms.open_envelope(util.b64(m["cms"]), cert, dk, alg)
+                    self.assertEqual(content, util.b64(m["content"]))
+                    self.assertEqual((d["wrap"], d["kekLength"]), (oids.ID_AES256_WRAP, 32))
+                    auth = m["label"].startswith("AuthEnvelopedData")
+                    self.assertEqual(d["contentEncryptionAlgorithm"], oids.ID_AES256_GCM if auth else oids.ID_AES256_CBC)
 
 
 class CMSRoundTripTest(unittest.TestCase):
@@ -85,10 +102,11 @@ class CMSRoundTripTest(unittest.TestCase):
                 message = cms.envelope(CONTENT, [cert])
                 content, d = cms.open_envelope(message, cert, dk, dk_alg)
                 self.assertEqual(content, CONTENT)
-                self.assertEqual(d["wrap"], cms.DEFAULT_WRAP[alg.frodo.n])
+                # section 2.1: AES-Wrap-256 for all eight
+                self.assertEqual((d["wrap"], d["kekLength"]), (oids.ID_AES256_WRAP, 32))
 
     def test_auth_enveloped_data(self):
-        for name in ("id-FrodoKEM976-RSA3072-SHA3-256", "id-FrodoKEM1344-AES-X448-SHA3-256"):
+        for name in ("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256", "id-FrodoKEM1344-AES-X448-SHA3-256"):
             with self.subTest(name):
                 cert, dk_alg, dk = vector_recipient(name)
                 message = cms.envelope(CONTENT, [cert], content_alg=oids.ID_AES256_GCM)
@@ -97,47 +115,45 @@ class CMSRoundTripTest(unittest.TestCase):
                 self.assertEqual(d["version"], 0)
 
     def test_two_recipients(self):
-        c1, a1, k1 = vector_recipient("id-FrodoKEM976-X25519-SHA3-256")
-        c2, a2, k2 = vector_recipient("id-FrodoKEM1344-RSA4096-SHA3-256")
+        c1, a1, k1 = vector_recipient("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
+        c2, a2, k2 = vector_recipient("id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256")
         message = cms.envelope(CONTENT, [c1, c2])
         self.assertEqual(cms.open_envelope(message, c1, k1, a1)[0], CONTENT)
         self.assertEqual(cms.open_envelope(message, c2, k2, a2)[0], CONTENT)
 
-    def test_aes256_wrap_with_frodokem976(self):
-        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-AES-X25519-SHA3-256")
-        message = cms.envelope(CONTENT, [cert], wrap_oid=oids.ID_AES256_WRAP)
-        content, d = cms.open_envelope(message, cert, dk, dk_alg)
-        self.assertEqual((content, d["wrap"], d["kekLength"]), (CONTENT, oids.ID_AES256_WRAP, 32))
-
     def test_disallowed_wrap_not_generated(self):
-        for name, wrap in (("id-FrodoKEM976-X25519-SHA3-256", oids.ID_AES128_WRAP),
-                           ("id-FrodoKEM1344-X448-SHA3-256", oids.ID_AES128_WRAP),
-                           ("id-FrodoKEM1344-X448-SHA3-256", oids.ID_AES192_WRAP)):
+        # section 2.2: at least 256-bit key encryption with FrodoKEM-976 as well
+        for name, wrap in (("id-FrodoKEM976-SHAKE-X25519-SHA3-256", oids.ID_AES128_WRAP),
+                           ("id-FrodoKEM976-SHAKE-X25519-SHA3-256", oids.ID_AES192_WRAP),
+                           ("id-FrodoKEM976-AES-RSA3072-SHA3-256", oids.ID_AES192_WRAP),
+                           ("id-FrodoKEM1344-SHAKE-X448-SHA3-256", oids.ID_AES128_WRAP),
+                           ("id-FrodoKEM1344-SHAKE-X448-SHA3-256", oids.ID_AES192_WRAP)):
             with self.subTest(name=name, wrap=wrap):
                 cert, _, _ = vector_recipient(name)
                 self.assertRaises(CMSError, cms.envelope, CONTENT, [cert], wrap_oid=wrap)
 
     def test_disallowed_wrap_not_accepted(self):
         # the recipient refuses a weaker wrap even when the KEK derivation is otherwise right
-        cert, dk_alg, dk = vector_recipient("id-FrodoKEM1344-X448-SHA3-256")
-        message = cms.envelope(CONTENT, [cert])
-
         def to_aes192(kemri):
             kemri["wrap"]["algorithm"] = univ.ObjectIdentifier(oids.ID_AES192_WRAP)
             kemri["kekLength"] = 24
-        with self.assertRaises(CMSError) as cm:
-            cms.open_envelope(tamper_kemri(message, to_aes192), cert, dk, dk_alg)
-        self.assertIn("not allowed", str(cm.exception))
+        for name in ("id-FrodoKEM976-SHAKE-X25519-SHA3-256", "id-FrodoKEM1344-SHAKE-X448-SHA3-256"):
+            with self.subTest(name):
+                cert, dk_alg, dk = vector_recipient(name)
+                message = cms.envelope(CONTENT, [cert])
+                with self.assertRaises(CMSError) as cm:
+                    cms.open_envelope(tamper_kemri(message, to_aes192), cert, dk, dk_alg)
+                self.assertIn("not allowed", str(cm.exception))
 
     def test_field_checks(self):
-        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-X25519-SHA3-256")
+        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
         message = cms.envelope(CONTENT, [cert])
 
         def version1(kemri):
             kemri["version"] = 1
 
         def kek_length(kemri):
-            kemri["kekLength"] = 32
+            kemri["kekLength"] = 24     # AES-Wrap-256 needs 32
 
         def kdf_parameters(kemri):
             kemri["kdf"]["parameters"] = der_encoder.encode(univ.Null(""))
@@ -160,32 +176,35 @@ class CMSRoundTripTest(unittest.TestCase):
                 self.assertRaises(CompositeError, cms.open_envelope, tamper_kemri(message, edit), cert, dk, dk_alg)
 
     def test_ukm(self):
-        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-X25519-SHA3-256")
+        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
         message = cms.envelope(CONTENT, [cert], ukm=b"user keying material")
         content, d = cms.open_envelope(message, cert, dk, dk_alg)
         self.assertEqual((content, d["ukm"]), (CONTENT, b"user keying material"))
 
     def test_subject_key_identifier_rid(self):
-        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-RSA3072-SHA3-256")
+        cert, dk_alg, dk = vector_recipient("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256")
         cert = with_subject_key_identifier(cert, b"\x01\x02\x03\x04\x05\x06\x07\x08")
         message = cms.envelope(CONTENT, [cert], rid_type="subjectKeyIdentifier")
         content, d = cms.open_envelope(message, cert, dk, dk_alg)
         self.assertEqual((content, d["rid"]), (CONTENT, "subjectKeyIdentifier"))
-        other = with_subject_key_identifier(vector_recipient("id-FrodoKEM976-RSA3072-SHA3-256")[0], b"\x09" * 8)
+        other = with_subject_key_identifier(vector_recipient("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256")[0], b"\x09" * 8)
         self.assertRaises(CMSError, cms.open_envelope, message, other, dk, dk_alg)
 
     def test_private_key_for_another_algorithm(self):
-        cert, _, _ = vector_recipient("id-FrodoKEM976-X25519-SHA3-256")
+        cert, _, _ = vector_recipient("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
         _, other_alg, other_dk = vector_recipient("id-FrodoKEM976-AES-X25519-SHA3-256")
         message = cms.envelope(CONTENT, [cert])
         self.assertRaises(CMSError, cms.open_envelope, message, cert, other_dk, other_alg)
 
     def test_kdf_info_encoding(self):
         # RFC 9629 section 5: DER(CMSORIforKEMOtherInfo); with no ukm it is
-        # SEQUENCE { SEQUENCE { OID id-aes192-wrap }, INTEGER 24 }
+        # SEQUENCE { SEQUENCE { OID id-aes256-wrap }, INTEGER 32 }
         wrap = rfc5280.AlgorithmIdentifier()
-        wrap["algorithm"] = univ.ObjectIdentifier(oids.ID_AES192_WRAP)
-        self.assertEqual(cms.kdf_info(wrap, 24).hex(), "3010300b0609608648016503040119020118")
+        wrap["algorithm"] = univ.ObjectIdentifier(oids.ID_AES256_WRAP)
+        self.assertEqual(cms.kdf_info(wrap, 32).hex(), "3010300b060960864801650304012d020120")
+        # and with a ukm, which is [0] EXPLICIT
+        self.assertEqual(cms.kdf_info(wrap, 32, b"\x01\x02").hex(),
+                         "3016300b060960864801650304012d020120a00404020102")
 
 
 if __name__ == "__main__":

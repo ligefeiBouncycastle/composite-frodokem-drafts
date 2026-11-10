@@ -25,14 +25,14 @@ def pem(path):
     return base64.b64decode("".join(l for l in lines if not l.startswith("-----")))
 
 
-def load_testvectors():
-    with open(os.path.join(VECTORS, "testvectors.json")) as fh:
+def load_testvectors(directory=VECTORS):
+    with open(os.path.join(directory, "testvectors.json")) as fh:
         return json.load(fh)
 
 
-def load_intermediates():
+def load_intermediates(directory=VECTORS):
     """Parse combiner-intermediates.txt into {tcId: {field: bytes, "input_length": int}}."""
-    with open(os.path.join(VECTORS, "combiner-intermediates.txt")) as fh:
+    with open(os.path.join(directory, "combiner-intermediates.txt")) as fh:
         text = fh.read()
     result = {}
     for block in re.split(r"\n(?=# id-)", text):

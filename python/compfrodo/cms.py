@@ -1,4 +1,4 @@
-"""Composite FrodoKEM in CMS: draft-song-lamps-cms-composite-frodokem-01.
+"""Composite FrodoKEM in CMS: draft-song-lamps-cms-composite-frodokem-02.
 
 KEMRecipientInfo (RFC 9629) is the part the draft specifies. The EnvelopedData (RFC 5652) and
 AuthEnvelopedData (RFC 5083) code around it is a minimal container for testing: one or more
@@ -31,21 +31,20 @@ WRAP_KEK_LENGTH = {
 
 # The key-encryption algorithms accepted for each FrodoKEM level.
 #
-# Section 2.1 (wrap): FrodoKEM-976-based composites MUST support AES-Wrap-192, FrodoKEM-1344-based
-# composites MUST support AES-Wrap-256, and "Implementations MAY support other key-encryption
-# algorithms as well".
+# Section 2.1 (wrap): implementations MUST support AES-Wrap-256 "for all Composite FrodoKEM
+# algorithms" and "MAY support other key-encryption algorithms as well".
 # Section 2.2: when other components are used, the symmetric key-encryption strength is at least
-# 192 bits for FrodoKEM-976 and 256 bits for FrodoKEM-1344, and implementations MAY use
-# AES-Wrap-256 for FrodoKEM-976-based composites.
-# Accepted here: AES-Wrap-192 or AES-Wrap-256 with FrodoKEM-976, AES-Wrap-256 with FrodoKEM-1344.
+# 256 bits for both FrodoKEM-976 and FrodoKEM-1344.
+# So the only AES key wrap accepted is AES-Wrap-256, with either level; AES-Wrap-192 falls short
+# of the 256-bit minimum for FrodoKEM-976 too.
 ALLOWED_WRAP = {
-    976: (oids.ID_AES192_WRAP, oids.ID_AES256_WRAP),
+    976: (oids.ID_AES256_WRAP,),
     1344: (oids.ID_AES256_WRAP,),
 }
 
 # The wrap algorithm used when the caller names none: the one section 2.1 makes mandatory.
 DEFAULT_WRAP = {
-    976: oids.ID_AES192_WRAP,
+    976: oids.ID_AES256_WRAP,
     1344: oids.ID_AES256_WRAP,
 }
 

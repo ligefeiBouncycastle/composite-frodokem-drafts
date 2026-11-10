@@ -8,17 +8,17 @@ Until IANA assigns them, these unregistered placeholders are used, which match t
 _ARC = "2.25.244012452097848048867364395212826631944"
 
 PLACEHOLDER_OIDS = {
-    "id-FrodoKEM976-RSA3072-SHA3-256": _ARC + ".1",         # TBD1
-    "id-FrodoKEM976-X25519-SHA3-256": _ARC + ".2",          # TBD2
-    "id-FrodoKEM1344-RSA4096-SHA3-256": _ARC + ".3",        # TBD3
-    "id-FrodoKEM1344-X448-SHA3-256": _ARC + ".4",           # TBD4
+    "id-FrodoKEM976-SHAKE-RSA3072-SHA3-256": _ARC + ".1",   # TBD1
+    "id-FrodoKEM976-SHAKE-X25519-SHA3-256": _ARC + ".2",    # TBD2
+    "id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256": _ARC + ".3",  # TBD3
+    "id-FrodoKEM1344-SHAKE-X448-SHA3-256": _ARC + ".4",     # TBD4
     "id-FrodoKEM976-AES-RSA3072-SHA3-256": _ARC + ".5",     # TBD5
     "id-FrodoKEM976-AES-X25519-SHA3-256": _ARC + ".6",      # TBD6
     "id-FrodoKEM1344-AES-RSA4096-SHA3-256": _ARC + ".7",    # TBD7
     "id-FrodoKEM1344-AES-X448-SHA3-256": _ARC + ".8",       # TBD8
 }
 
-# CMS (draft-song-lamps-cms-composite-frodokem-01 section 3, RFC 9629, RFC 8619, RFC 3565)
+# CMS (draft-song-lamps-cms-composite-frodokem-02 section 3, RFC 9629, RFC 8619, RFC 3565)
 ID_ORI_KEM = "1.2.840.113549.1.9.16.13.3"
 ID_ALG_HKDF_WITH_SHA256 = "1.2.840.113549.1.9.16.3.28"
 ID_AES128_WRAP = "2.16.840.1.101.3.4.1.5"

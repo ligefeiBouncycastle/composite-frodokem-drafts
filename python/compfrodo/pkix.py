@@ -1,5 +1,5 @@
 """SubjectPublicKeyInfo, OneAsymmetricKey and certificate handling for Composite FrodoKEM keys
-(draft-song-lamps-pq-composite-frodokem-01 sections 4.1, 4.2 and 5.1)."""
+(draft-song-lamps-pq-composite-frodokem-02 sections 4.1, 4.2 and 5.1)."""
 
 from pyasn1.codec.der import decoder as der_decoder
 from pyasn1.codec.der import encoder as der_encoder
@@ -66,10 +66,12 @@ def decode_spki(data):
 
 
 def encode_private_key(alg, dk, include_public_key=False):
-    """Section 4.2: a OneAsymmetricKey whose privateKey holds dk.
+    """Section 4.2: a OneAsymmetricKey whose privateKey holds dk itself, with no further
+    encoding.
 
-    With include_public_key the publicKey field carries ek (rebuilt from dk), which makes it a
-    version 2 OneAsymmetricKey; without it the result is version 1 (a PrivateKeyInfo)."""
+    The publicKey field is OPTIONAL. With include_public_key it carries ek (rebuilt from dk),
+    which makes it a version 2 OneAsymmetricKey; without it the result is version 1 (a
+    PrivateKeyInfo)."""
     composite.split_private_key(alg, dk)
     oak = rfc5958.OneAsymmetricKey()
     oak["version"] = 1 if include_public_key else 0
@@ -136,8 +138,8 @@ class Certificate(object):
         return set(names[i] for i, bit in enumerate(ku) if bit)
 
     def composite_public_key(self):
-        """Returns (algorithm, ek). Section 4.1 and the draft's CERT-KEY-USAGE: a key usage
-        extension, when present, must assert exactly keyEncipherment."""
+        """Returns (algorithm, ek). Sections 4.1 and 5.3: a key usage extension, when present,
+        must assert exactly keyEncipherment."""
         alg, ek = decode_spki_object(self.spki)
         usage = self.key_usage()
         if usage is not None and usage != set(["keyEncipherment"]):

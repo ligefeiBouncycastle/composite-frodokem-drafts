@@ -1,8 +1,9 @@
 # Test vectors
 
-These vectors were generated with Gefei Li's Java prototype of the -01 drafts. Every value was
-checked when it was written: each ciphertext decapsulates to its shared secret, and the shared secret
-was recomputed from the component primitives.
+These vectors are for the -02 drafts. They were written by
+[`../python/generate_vectors.py`](../python/generate_vectors.py), which checks every value with the
+Python implementation before it writes it: each ciphertext decapsulates to its shared secret, and
+each CMS message opens for each of its recipients.
 
 ## Files
 
@@ -11,12 +12,21 @@ was recomputed from the component primitives.
 | `testvectors.json` | One test case per algorithm, in the JSON layout of Appendix G of draft-ietf-lamps-pq-composite-kem (see below) |
 | `combiner-intermediates.txt` | For each test case, the combiner inputs `frodo_ss`, `trad_ss`, `trad_ct`, `trad_pk` and `Label`, and the output `ss` (hex), in the manner of Appendix F of draft-ietf-lamps-pq-composite-kem |
 | `cacert.pem` | The ML-DSA-65 CA certificate that issued every `x5c` |
+| `cms.json` | 13 CMS messages to the test case keys, with the `tcId`s of their recipients and their content (see [../python/README.md](../python/README.md)) |
 | `cms-<alg>-enveloped.pem` | A CMS EnvelopedData (RFC 5652) with one KEMRecipientInfo (RFC 9629). Its content is `Hello, world!`, encrypted with AES-256-CBC |
-| `cms-<alg>-recipient-cert.pem`, `cms-<alg>-recipient-key.pem` | The recipient's certificate and its OneAsymmetricKey (RFC 5958) |
+| `cms-<alg>-recipient-cert.pem`, `cms-<alg>-recipient-key.pem` | The recipient's certificate and its OneAsymmetricKey (RFC 5958), those of the `<alg>` test case |
 | `cms-<alg>-kemri.txt` | An ASN.1 dump of that KEMRecipientInfo, with `kemct` shown only by its length |
+| `cms-example-authenveloped-frodokem976-shake-x25519.txt` | An AuthEnvelopedData (RFC 5083) example built from fixed inputs, with the originator's and the recipient's intermediate values, in the manner of Appendix B of draft-ietf-lamps-cms-composite-kem |
 
-The CMS examples are for FrodoKEM976-X25519, with HKDF-SHA256 and AES-Wrap-192, and for
-FrodoKEM1344-X448, with HKDF-SHA256 and AES-Wrap-256.
+The EnvelopedData examples are for FrodoKEM976-SHAKE-X25519 and FrodoKEM1344-SHAKE-X448. Both use
+HKDF-SHA256 and AES-Wrap-256, as every message here does.
+
+The AuthEnvelopedData example is for FrodoKEM976-SHAKE-X25519, with HKDF-SHA256, AES-Wrap-256 and
+AES-256-GCM. Each of its random inputs is derived from a fixed string with SHAKE256, as the file
+explains, so a new run of the generator writes it again unchanged, except for the ML-DSA-65
+signatures on its two certificates. Its lines are at most 72 characters long.
+
+Everything else is new on each run of the generator.
 
 ### testvectors.json
 
@@ -25,13 +35,25 @@ FrodoKEM1344-X448, with HKDF-SHA256 and AES-Wrap-256.
 
 | Field | Contents |
 |-------|----------|
-| `tcId` | The algorithm name, e.g. `id-FrodoKEM976-X25519-SHA3-256` |
+| `tcId` | The algorithm name, e.g. `id-FrodoKEM976-SHAKE-X25519-SHA3-256` |
 | `ek` | The composite public key, `frodo_pk \|\| trad_pk` (the subjectPublicKey BIT STRING contents) |
 | `x5c` | The end-entity certificate carrying `ek` |
 | `dk` | The composite private key, `frodo_sk \|\| trad_sk` |
-| `dk_pkcs8` | `dk` inside a OneAsymmetricKey |
+| `dk_pkcs8` | `dk` inside a version 1 OneAsymmetricKey, without `publicKey` |
+| `dk_pkcs8_v2` | `dk` inside a version 2 OneAsymmetricKey, with `publicKey` set to `ek` |
 | `c` | A ciphertext, `frodo_ct \|\| trad_ct` |
 | `k` | The 32-byte shared secret that `c` decapsulates to |
+
+`dk_pkcs8_v2` is not in the Appendix G layout. The other fields are.
+
+### Key encodings
+
+`frodo_sk` is the expanded FrodoKEM private key, `s || seedA || b || S^T || pkh`. An RSA `trad_pk`
+is an RSAPublicKey and an RSA `trad_sk` an RSAPrivateKey, both DER. An X25519 or X448 `trad_pk` is
+the raw 32- or 56-byte public key.
+
+The drafts do not say how an X25519 or X448 `trad_sk` is encoded. These vectors assume the raw 32-
+or 56-byte RFC 7748 private key, not an RFC 8410 CurvePrivateKey.
 
 ## Placeholder OIDs
 
@@ -40,14 +62,17 @@ these vectors use the following **unregistered placeholders**, which will change
 
 | Algorithm | Draft | Placeholder OID |
 |-----------|-------|-----------------|
-| id-FrodoKEM976-RSA3072-SHA3-256      | TBD1 | 2.25.244012452097848048867364395212826631944.1 |
-| id-FrodoKEM976-X25519-SHA3-256       | TBD2 | 2.25.244012452097848048867364395212826631944.2 |
-| id-FrodoKEM1344-RSA4096-SHA3-256     | TBD3 | 2.25.244012452097848048867364395212826631944.3 |
-| id-FrodoKEM1344-X448-SHA3-256        | TBD4 | 2.25.244012452097848048867364395212826631944.4 |
-| id-FrodoKEM976-AES-RSA3072-SHA3-256  | TBD5 | 2.25.244012452097848048867364395212826631944.5 |
-| id-FrodoKEM976-AES-X25519-SHA3-256   | TBD6 | 2.25.244012452097848048867364395212826631944.6 |
-| id-FrodoKEM1344-AES-RSA4096-SHA3-256 | TBD7 | 2.25.244012452097848048867364395212826631944.7 |
-| id-FrodoKEM1344-AES-X448-SHA3-256    | TBD8 | 2.25.244012452097848048867364395212826631944.8 |
+| id-FrodoKEM976-SHAKE-RSA3072-SHA3-256  | TBD1 | 2.25.244012452097848048867364395212826631944.1 |
+| id-FrodoKEM976-SHAKE-X25519-SHA3-256   | TBD2 | 2.25.244012452097848048867364395212826631944.2 |
+| id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256 | TBD3 | 2.25.244012452097848048867364395212826631944.3 |
+| id-FrodoKEM1344-SHAKE-X448-SHA3-256    | TBD4 | 2.25.244012452097848048867364395212826631944.4 |
+| id-FrodoKEM976-AES-RSA3072-SHA3-256    | TBD5 | 2.25.244012452097848048867364395212826631944.5 |
+| id-FrodoKEM976-AES-X25519-SHA3-256     | TBD6 | 2.25.244012452097848048867364395212826631944.6 |
+| id-FrodoKEM1344-AES-RSA4096-SHA3-256   | TBD7 | 2.25.244012452097848048867364395212826631944.7 |
+| id-FrodoKEM1344-AES-X448-SHA3-256      | TBD8 | 2.25.244012452097848048867364395212826631944.8 |
 
-The OIDs appear only in the certificates, the OneAsymmetricKey encodings and the CMS examples. They
+The placeholders are the ones the -01 vectors used, in the same order. They now stand for the -02
+algorithms, whose SHAKE variants have new names and Labels, so no -01 vector is valid under them.
+
+The OIDs appear only in the certificates, the OneAsymmetricKey encodings and the CMS messages. They
 are not an input to the combiner: the Label is.

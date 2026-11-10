@@ -1,2 +1,2 @@
-"""Composite FrodoKEM (draft-song-lamps-pq-composite-frodokem-01 and
-draft-song-lamps-cms-composite-frodokem-01): an implementation for interoperability testing."""
+"""Composite FrodoKEM (draft-song-lamps-pq-composite-frodokem-02 and
+draft-song-lamps-cms-composite-frodokem-02): an implementation for interoperability testing."""

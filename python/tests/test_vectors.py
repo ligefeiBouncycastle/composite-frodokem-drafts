@@ -1,5 +1,6 @@
 """Every test case in ../vectors/testvectors.json and combiner-intermediates.txt, byte for byte."""
 
+import os
 import unittest
 
 from pyasn1.codec.der import encoder as der_encoder
@@ -17,8 +18,11 @@ CA = pkix.Certificate(util.b64(VECTORS["cacert"]))
 class TestVectors(unittest.TestCase):
 
     def test_all_eight_present(self):
-        self.assertEqual(sorted(t["tcId"] for t in VECTORS["tests"]), sorted(a.oid_name for a in composite.ALGORITHMS))
+        self.assertEqual([t["tcId"] for t in VECTORS["tests"]], [a.oid_name for a in composite.ALGORITHMS])
         self.assertEqual(sorted(INTERMEDIATES), sorted(a.oid_name for a in composite.ALGORITHMS))
+        for t in VECTORS["tests"]:
+            self.assertEqual(sorted(t), ["c", "dk", "dk_pkcs8", "dk_pkcs8_v2", "ek", "k", "tcId", "x5c"])
+        self.assertEqual(util.pem(os.path.join(util.VECTORS, "cacert.pem")), util.b64(VECTORS["cacert"]))
 
     def test_decaps_reproduces_k_and_intermediates(self):
         for t in VECTORS["tests"]:
@@ -63,9 +67,10 @@ class TestVectors(unittest.TestCase):
                 self.assertIsNone(ek)
                 # re-encoding gives the same bytes
                 self.assertEqual(pkix.encode_private_key(alg, dk), util.b64(t["dk_pkcs8"]))
-                # and the version 2 form with publicKey round-trips
-                alg2, dk2, ek2 = pkix.decode_private_key(pkix.encode_private_key(alg, dk, include_public_key=True))
+                # the version 2 form carries publicKey = ek, and re-encodes to the same bytes too
+                alg2, dk2, ek2 = pkix.decode_private_key(util.b64(t["dk_pkcs8_v2"]))
                 self.assertEqual((alg2, dk2, ek2), (alg, dk, util.b64(t["ek"])))
+                self.assertEqual(pkix.encode_private_key(alg, dk, include_public_key=True), util.b64(t["dk_pkcs8_v2"]))
 
     def test_certificates(self):
         for t in VECTORS["tests"]:
@@ -103,8 +108,8 @@ class TestVectors(unittest.TestCase):
     def test_rsa_modulus_size_enforced(self):
         by_id = dict((t["tcId"], t) for t in VECTORS["tests"])
         # put each RSA private key behind the other RSA size's FrodoKEM private key
-        for target, donor in (("id-FrodoKEM976-RSA3072-SHA3-256", "id-FrodoKEM1344-RSA4096-SHA3-256"),
-                              ("id-FrodoKEM1344-RSA4096-SHA3-256", "id-FrodoKEM976-RSA3072-SHA3-256")):
+        for target, donor in (("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256", "id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256"),
+                              ("id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256", "id-FrodoKEM976-SHAKE-RSA3072-SHA3-256")):
             with self.subTest(target):
                 alg = composite.algorithm(target)
                 donor_alg = composite.algorithm(donor)
@@ -130,9 +135,9 @@ class TestVectors(unittest.TestCase):
         # an X25519 key under the X448 OID, and the SHAKE key under the AES OID decapsulates
         # to a different secret (implicit rejection), never to k
         by_id = dict((t["tcId"], t) for t in VECTORS["tests"])
-        t = by_id["id-FrodoKEM976-X25519-SHA3-256"]
+        t = by_id["id-FrodoKEM976-SHAKE-X25519-SHA3-256"]
         dk, c, k = util.b64(t["dk"]), util.b64(t["c"]), util.b64(t["k"])
-        self.assertRaises(CompositeError, composite.decaps, composite.algorithm("id-FrodoKEM1344-X448-SHA3-256"), dk, c)
+        self.assertRaises(CompositeError, composite.decaps, composite.algorithm("id-FrodoKEM1344-SHAKE-X448-SHA3-256"), dk, c)
         self.assertNotEqual(composite.decaps(composite.algorithm("id-FrodoKEM976-AES-X25519-SHA3-256"), dk, c), k)
 
 

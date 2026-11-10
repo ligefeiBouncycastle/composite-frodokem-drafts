@@ -1,0 +1,33 @@
+KEMRecipientInfo in cms-FrodoKEM1344-SHAKE-X448-SHA3-256-enveloped.pem; OCTET STRINGs over 64 bytes
+are shown by length only.
+
+SEQUENCE
+  INTEGER 0
+  SEQUENCE
+    SEQUENCE
+      SET
+        SEQUENCE
+          OBJECT IDENTIFIER 2.5.4.10  -- id-at-organizationName
+          UTF8String "IETF"
+      SET
+        SEQUENCE
+          OBJECT IDENTIFIER 2.5.4.11  -- id-at-organizationalUnitName
+          UTF8String "LAMPS"
+      SET
+        SEQUENCE
+          OBJECT IDENTIFIER 2.5.4.3  -- id-at-commonName
+          UTF8String "Composite FrodoKEM test CA (compfrodo)"
+    INTEGER 5
+  SEQUENCE
+    OBJECT IDENTIFIER 2.25.244012452097848048867364395212826631944.4
+      -- id-FrodoKEM1344-SHAKE-X448-SHA3-256
+  OCTET STRING (21752 bytes)
+  SEQUENCE
+    OBJECT IDENTIFIER 1.2.840.113549.1.9.16.3.28
+      -- id-alg-hkdf-with-sha256
+  INTEGER 32
+  SEQUENCE
+    OBJECT IDENTIFIER 2.16.840.1.101.3.4.1.45  -- id-aes256-wrap
+  OCTET STRING (40 bytes)
+    16c4d0c62f2bd6c9a278cd5a1b49851bf6f1bddf8e1053cdfad584422059e6b1
+    3bc967e1ae4b866b

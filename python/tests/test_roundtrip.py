@@ -56,18 +56,44 @@ class RoundTripTest(unittest.TestCase):
                 else:
                     self.assertNotEqual(composite.decaps(alg, dk, bytes(bad)), ss)
 
-    def test_label_binds_algorithm(self):
-        labels = [a.label for a in composite.ALGORITHMS]
-        self.assertEqual(len(set(labels)), 8)
-        self.assertEqual(composite.algorithm("id-FrodoKEM976-RSA3072-SHA3-256").label, b"FrodoKEM976-RSA3072")
-        self.assertEqual(composite.algorithm("id-FrodoKEM1344-X448-SHA3-256").label, b"FrodoKEM1344-X448")
-        self.assertEqual(composite.algorithm("id-FrodoKEM1344-AES-RSA4096-SHA3-256").label, b"FrodoKEM1344-AES-RSA4096")
+    def test_keygen_draws_from_randombytes(self):
+        # the FrodoKEM seeds and an X25519 / X448 private key, in that order
+        for name in ("id-FrodoKEM976-AES-X25519-SHA3-256", "id-FrodoKEM1344-SHAKE-X448-SHA3-256"):
+            with self.subTest(name):
+                alg = composite.algorithm(name)
+                calls = []
+
+                def rnd(n):
+                    calls.append(n)
+                    return bytes((len(calls) + i) % 256 for i in range(n))
+                ek, dk = composite.keygen(alg, rnd)
+                p = alg.frodo
+                self.assertEqual(calls, [p.len_sec + p.len_SE + p.len_A, alg.trad_ct_len])
+                # trad_sk is the bytes of the second call, raw
+                self.assertEqual(dk[p.sk_len:], bytes((2 + i) % 256 for i in range(alg.trad_ct_len)))
+                self.assertEqual(composite.public_key_from_private(alg, dk), ek)
+
+    def test_names_labels_and_oids(self):
+        # draft-song-lamps-pq-composite-frodokem-02 section 5.1, TBD1 to TBD8 in order
+        table = (("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256", b"FrodoKEM976-SHAKE-RSA3072", "FrodoKEM-976-SHAKE", "RSA"),
+                 ("id-FrodoKEM976-SHAKE-X25519-SHA3-256", b"FrodoKEM976-SHAKE-X25519", "FrodoKEM-976-SHAKE", "X25519"),
+                 ("id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256", b"FrodoKEM1344-SHAKE-RSA4096", "FrodoKEM-1344-SHAKE", "RSA"),
+                 ("id-FrodoKEM1344-SHAKE-X448-SHA3-256", b"FrodoKEM1344-SHAKE-X448", "FrodoKEM-1344-SHAKE", "X448"),
+                 ("id-FrodoKEM976-AES-RSA3072-SHA3-256", b"FrodoKEM976-AES-RSA3072", "FrodoKEM-976-AES", "RSA"),
+                 ("id-FrodoKEM976-AES-X25519-SHA3-256", b"FrodoKEM976-AES-X25519", "FrodoKEM-976-AES", "X25519"),
+                 ("id-FrodoKEM1344-AES-RSA4096-SHA3-256", b"FrodoKEM1344-AES-RSA4096", "FrodoKEM-1344-AES", "RSA"),
+                 ("id-FrodoKEM1344-AES-X448-SHA3-256", b"FrodoKEM1344-AES-X448", "FrodoKEM-1344-AES", "X448"))
+        got = [(a.oid_name, a.label, a.frodo.name, a.trad) for a in composite.ALGORITHMS]
+        self.assertEqual(got, list(table))
+        self.assertEqual([a.oid for a in composite.ALGORITHMS],
+                         ["2.25.244012452097848048867364395212826631944.%d" % i for i in range(1, 9)])
+        self.assertEqual(len(set(a.label for a in composite.ALGORITHMS)), 8)
 
     def test_spki_parameters_must_be_absent(self):
         from pyasn1.codec.der import decoder, encoder
         from pyasn1.type import univ
         from pyasn1_alt_modules import rfc5280
-        alg = composite.algorithm("id-FrodoKEM976-X25519-SHA3-256")
+        alg = composite.algorithm("id-FrodoKEM976-SHAKE-X25519-SHA3-256")
         ek, _ = keypair(alg)
         spki, _ = decoder.decode(pkix.encode_spki(alg, ek), asn1Spec=rfc5280.SubjectPublicKeyInfo())
         spki["algorithm"]["parameters"] = encoder.encode(univ.Null(""))

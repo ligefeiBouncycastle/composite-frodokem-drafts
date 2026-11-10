@@ -1,8 +1,8 @@
 # compfrodo: a Python implementation of Composite FrodoKEM
 
-This is an implementation of draft-song-lamps-pq-composite-frodokem-01 (X.509) and
-draft-song-lamps-cms-composite-frodokem-01 (CMS), written for interoperability testing. It is not
-constant time and is not meant for production use.
+This is an implementation of draft-song-lamps-pq-composite-frodokem-02 (X.509) and
+draft-song-lamps-cms-composite-frodokem-02 (CMS), written for interoperability testing. It wrote the
+vectors in `../vectors`. It is not constant time and is not meant for production use.
 
 | Module | Contents |
 |--------|----------|
@@ -33,8 +33,8 @@ From this directory:
 python3 -m unittest discover -s tests -v
 ```
 
-The suite takes about a minute and a half, or about a minute when `cryptography` has no ML-DSA and
-the tests that need it are skipped. It covers:
+The suite takes about 100 seconds, or about 70 seconds when `cryptography` has no ML-DSA and the
+tests that need it are skipped. It covers:
 
 - `test_frodokem.py`: FrodoKEM against the first record of the FrodoKEM team's KAT files for all four
   parameter sets, using the NIST AES-256 CTR_DRBG. It also checks wrong lengths and implicit rejection.
@@ -44,58 +44,63 @@ the tests that need it are skipped. It covers:
   ciphertext-length and RSA modulus checks.
 - `test_roundtrip.py`: KeyGen, encodings, Encaps and Decaps for all eight algorithms, plus tampered
   ciphertexts.
-- `test_cms.py`: the two CMS examples in `../vectors`, CMS round trips for all eight algorithms,
-  and the KEMRecipientInfo field checks (version, kem, kdf, kekLength, wrap, ukm, rid).
-- `test_generate.py`: runs `generate_vectors.py` and reads its output back. It is skipped when
-  `cryptography` has no ML-DSA.
+- `test_cms.py`: the two EnvelopedData examples and the 13 messages in `../vectors/cms.json`, CMS
+  round trips for all eight algorithms, and the KEMRecipientInfo field checks (version, kem, kdf,
+  kekLength, wrap, ukm, rid).
+- `test_cms_example.py`: the AuthEnvelopedData example in `../vectors`. Every value printed in it
+  is recomputed from its fixed inputs with hashlib, hmac and the `cryptography` package's X25519,
+  AES key wrap and AES-GCM, not through this implementation's composite and CMS code.
+- `test_generate.py`: runs `generate_vectors.py`, reads its output back, and checks that the
+  AuthEnvelopedData example comes out as in `../vectors` apart from the certificate signatures. It
+  is skipped when `cryptography` has no ML-DSA.
 
-## Generating vectors for another implementation
+## Generating the vectors
 
-`../vectors` was written by the Java prototype; `generate_vectors.py` writes the same kind of
-vectors from this implementation, so another implementation can be checked against it:
+`../vectors` holds the output of one run of `generate_vectors.py`:
 
 ```
 python3 generate_vectors.py OUTPUT_DIR
 ```
 
 It takes about 25 seconds and needs a `cryptography` package with ML-DSA (tested with 50.0.2),
-because a fresh ML-DSA-65 CA issues the certificates. Every run makes new keys. Each value is
-checked with this implementation before it is written. It writes two files:
+because ML-DSA-65 CAs issue the certificates. Each value is checked with this implementation before
+it is written. The files are described in [../vectors/README.md](../vectors/README.md). Every run
+makes new keys, ciphertexts and messages, except for the AuthEnvelopedData example: its random
+inputs are fixed, so a new run writes it again unchanged, apart from the two certificate
+signatures, which ML-DSA-65 hedges.
 
-- `testvectors.json`: one test case per algorithm, in the layout of `../vectors/testvectors.json`
-  (see [../vectors/README.md](../vectors/README.md)), with one more field, `dk_pkcs8_v2`: the
-  private key as a version 2 OneAsymmetricKey that also carries the public key.
-- `cms.json`: a list of 13 CMS messages, each an object with `label`, `recipients` (the `tcId`s of
-  the test cases whose keys can open it), `content` and `cms` (both base64; `cms` is a DER
-  ContentInfo). The content is always `Hello, world!`. The messages are:
-  - EnvelopedData with AES-256-CBC, the default wrap and an issuerAndSerialNumber rid, one for each
-    algorithm.
-  - EnvelopedData with a subjectKeyIdentifier rid, one with a ukm, and one with AES-Wrap-256 for a
-    FrodoKEM-976 composite.
-  - AuthEnvelopedData with AES-256-GCM.
-  - EnvelopedData with two recipients.
+`cms.json` lists 13 CMS messages, each an object with `label`, `recipients` (the `tcId`s of the
+test cases whose keys can open it), `content` and `cms` (both base64; `cms` is a DER ContentInfo).
+The content is always `Hello, world!`, and the key wrap is always AES-Wrap-256. The messages are:
 
-Output from this script has been read back by the Java prototype. Every certificate verified, the
-SubjectPublicKeyInfo and version 1 OneAsymmetricKey encodings re-encoded to the same bytes, the
-version 2 encoding was accepted, every ciphertext decapsulated to `k`, and every message decrypted
-to its content.
+- EnvelopedData with AES-256-CBC and an issuerAndSerialNumber rid, one for each algorithm.
+- EnvelopedData with a subjectKeyIdentifier rid, and one with a ukm.
+- AuthEnvelopedData with AES-256-GCM, for FrodoKEM976-SHAKE-X25519 and for
+  FrodoKEM1344-AES-RSA4096.
+- EnvelopedData with two recipients.
 
 ## Choices this implementation makes
 
-- **trad_pk in Decaps.** It is derived from trad_sk, as in draft-ietf-lamps-pq-composite-kem-23
-  sections 3.3 and 10.4. The RSAPublicKey is re-encoded from the RSAPrivateKey; the X25519 or X448
-  public key is computed from the private key. A public key supplied with the private key, from a
-  certificate or OneAsymmetricKey.publicKey, must match the derived one.
+- **trad_pk in Decaps.** Section 3.3 allows three sources. It is always derived from trad_sk: the
+  RSAPublicKey is re-encoded from the RSAPrivateKey, and the X25519 or X448 public key is computed
+  from the private key. A public key supplied with the private key, from a certificate or
+  OneAsymmetricKey.publicKey, must match the derived one.
 - **Traditional components.** RSA-OAEP uses SHA-256, MGF1-SHA-256, an empty label and a 32-byte
-  secret, as in draft-ietf-lamps-pq-composite-kem-23 section 6.1. RSA keys are RSAPublicKey and
-  RSAPrivateKey (version 0) in DER. X25519 and X448 keys and ciphertexts are raw RFC 7748 values.
-- **Labels.** Each Label is the algorithm name without "id-" and "-SHA3-256", e.g.
+  secret (section 2.2). RSA keys are RSAPublicKey and RSAPrivateKey (version 0) in DER, as in
+  draft-ietf-lamps-pq-composite-kem-23 section 4. X25519 and X448 public keys and ciphertexts are
+  raw RFC 7748 values (section 4.1).
+- **X25519 and X448 private keys.** Section 4.2 says only that trad_sk is "in its native
+  encoding". This implementation assumes the raw 32- or 56-byte RFC 7748 private key, not an RFC
+  8410 CurvePrivateKey, so dk ends with exactly 32 or 56 bytes after the FrodoKEM private key.
+- **Labels.** As listed in section 5.1, e.g. "FrodoKEM976-SHAKE-X25519" and
   "FrodoKEM976-AES-X25519".
 - **Decaps input checks.** The ciphertext must be exactly the algorithm's length: the FrodoKEM
   ciphertext plus 384 or 512 bytes for RSA, 32 for X25519, or 56 for X448. The RSA modulus must be
   exactly 3072 or 4096 bits.
-- **CMS key wrap.** Accepted: AES-Wrap-192 or AES-Wrap-256 with FrodoKEM-976, and AES-Wrap-256 with
-  FrodoKEM-1344. When the caller names none, AES-Wrap-192 or AES-Wrap-256 is used (draft section
-  2.1). kekLength must match the wrap algorithm. The KDF is HKDF-SHA256 with an empty salt.
+- **CMS key wrap.** AES-Wrap-256, for all eight algorithms, is both the default and the only key
+  wrap accepted. CMS draft section 2.1 makes it mandatory for all eight and allows others, but
+  section 2.2 sets a 256-bit minimum for the key-encryption strength with FrodoKEM-976 as well, so
+  AES-Wrap-192 is refused. kekLength must match the wrap algorithm. The KDF is HKDF-SHA256 with an
+  empty salt (section 2.2.1).
 - **OneAsymmetricKey.** Written as version 1 with no publicKey by default, or as version 2 with
   the composite public key on request. Both versions are read.

@@ -1,6 +1,6 @@
-"""Composite FrodoKEM, draft-song-lamps-pq-composite-frodokem-01.
+"""Composite FrodoKEM, draft-song-lamps-pq-composite-frodokem-02.
 
-Section numbers in the comments are those of draft-song-lamps-pq-composite-frodokem-01 unless
+Section numbers in the comments are those of draft-song-lamps-pq-composite-frodokem-02 unless
 another document is named. "-23" means draft-ietf-lamps-pq-composite-kem-23, whose RSA-OAEP and
 DH-KEM building blocks (its sections 2.1, 2.2, 4 and 6.1) the drafts adopt.
 
@@ -27,15 +27,13 @@ class CompositeError(ValueError):
 
 
 class CompositeAlgorithm(object):
-    """One row of the section 5.1 table."""
+    """One entry of the section 5.1 list."""
 
-    def __init__(self, name, frodo, trad, rsa_bits=None):
-        self.name = name                    # e.g. "FrodoKEM976-X25519-SHA3-256"
+    def __init__(self, name, label, frodo, trad, rsa_bits=None):
+        self.name = name                    # e.g. "FrodoKEM976-SHAKE-X25519-SHA3-256"
         self.oid_name = "id-" + name
         self.oid = PLACEHOLDER_OIDS[self.oid_name]
-        # Section 5.2 gives three Labels as examples and no table. Each example is the OID name
-        # without "id-" and "-SHA3-256", and the other five are taken the same way.
-        self.label = name[:-len("-SHA3-256")].encode("ascii")
+        self.label = label.encode("ascii")  # the KEM Combiner Label (sections 3.4 and 5.1)
         self.frodo = frodo
         self.trad = trad                    # "RSA", "X25519" or "X448"
         self.rsa_bits = rsa_bits
@@ -53,15 +51,24 @@ class CompositeAlgorithm(object):
         return self.oid_name
 
 
+# Section 5.1, in the order of TBD1 to TBD8, with the Label each entry gives.
 ALGORITHMS = (
-    CompositeAlgorithm("FrodoKEM976-RSA3072-SHA3-256", frodokem.FRODOKEM_976_SHAKE, "RSA", 3072),
-    CompositeAlgorithm("FrodoKEM976-X25519-SHA3-256", frodokem.FRODOKEM_976_SHAKE, "X25519"),
-    CompositeAlgorithm("FrodoKEM1344-RSA4096-SHA3-256", frodokem.FRODOKEM_1344_SHAKE, "RSA", 4096),
-    CompositeAlgorithm("FrodoKEM1344-X448-SHA3-256", frodokem.FRODOKEM_1344_SHAKE, "X448"),
-    CompositeAlgorithm("FrodoKEM976-AES-RSA3072-SHA3-256", frodokem.FRODOKEM_976_AES, "RSA", 3072),
-    CompositeAlgorithm("FrodoKEM976-AES-X25519-SHA3-256", frodokem.FRODOKEM_976_AES, "X25519"),
-    CompositeAlgorithm("FrodoKEM1344-AES-RSA4096-SHA3-256", frodokem.FRODOKEM_1344_AES, "RSA", 4096),
-    CompositeAlgorithm("FrodoKEM1344-AES-X448-SHA3-256", frodokem.FRODOKEM_1344_AES, "X448"),
+    CompositeAlgorithm("FrodoKEM976-SHAKE-RSA3072-SHA3-256", "FrodoKEM976-SHAKE-RSA3072",
+                       frodokem.FRODOKEM_976_SHAKE, "RSA", 3072),
+    CompositeAlgorithm("FrodoKEM976-SHAKE-X25519-SHA3-256", "FrodoKEM976-SHAKE-X25519",
+                       frodokem.FRODOKEM_976_SHAKE, "X25519"),
+    CompositeAlgorithm("FrodoKEM1344-SHAKE-RSA4096-SHA3-256", "FrodoKEM1344-SHAKE-RSA4096",
+                       frodokem.FRODOKEM_1344_SHAKE, "RSA", 4096),
+    CompositeAlgorithm("FrodoKEM1344-SHAKE-X448-SHA3-256", "FrodoKEM1344-SHAKE-X448",
+                       frodokem.FRODOKEM_1344_SHAKE, "X448"),
+    CompositeAlgorithm("FrodoKEM976-AES-RSA3072-SHA3-256", "FrodoKEM976-AES-RSA3072",
+                       frodokem.FRODOKEM_976_AES, "RSA", 3072),
+    CompositeAlgorithm("FrodoKEM976-AES-X25519-SHA3-256", "FrodoKEM976-AES-X25519",
+                       frodokem.FRODOKEM_976_AES, "X25519"),
+    CompositeAlgorithm("FrodoKEM1344-AES-RSA4096-SHA3-256", "FrodoKEM1344-AES-RSA4096",
+                       frodokem.FRODOKEM_1344_AES, "RSA", 4096),
+    CompositeAlgorithm("FrodoKEM1344-AES-X448-SHA3-256", "FrodoKEM1344-AES-X448",
+                       frodokem.FRODOKEM_1344_AES, "X448"),
 )
 
 BY_NAME = dict((a.oid_name, a) for a in ALGORITHMS)
@@ -81,10 +88,11 @@ def algorithm(name_or_oid):
 # ---------------------------------------------------------------------------
 #
 # Section 4.1 says the RSA trad_pk is "encoded according to [RFC8017]", and the X25519 and X448
-# trad_pk is the 32- or 56-octet u-coordinate. Section 4.2 says trad_sk is "in its native encoding".
-# Following -23 section 4: RSAPublicKey and RSAPrivateKey (version 0, no otherPrimeInfos) in DER,
-# and raw RFC 7748 values for X25519 and X448. The X25519 and X448 ciphertexts are raw RFC 7748
-# public keys (-23 section 2.2).
+# trad_pk is "the raw 32-octet or 56-octet values". Section 4.2 says only that trad_sk is "in its
+# native encoding". Following -23 section 4: RSAPublicKey and RSAPrivateKey (version 0, no
+# otherPrimeInfos) in DER. For X25519 and X448 the private key is assumed to be the raw 32- or
+# 56-byte RFC 7748 value, not an RFC 8410 CurvePrivateKey. The X25519 and X448 ciphertexts are
+# raw RFC 7748 public keys (section 2.2 and -23 section 2.2).
 
 _OAEP = padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
 _RSA_SS_LEN = 32    # -23 section 6.1: ss_len = 256 bits
@@ -141,7 +149,7 @@ def _rsa_private_from_der(alg, data):
 
 
 def _check_rsa_modulus(alg, n):
-    # -23 sections 3.3 and 6.1: the modulus has exactly the size the algorithm names
+    # Section 3.3 (and -23 sections 3.3 and 6.1): the modulus is exactly 3072 or 4096 bits
     if n.bit_length() != alg.rsa_bits:
         raise CompositeError("RSA modulus is %d bits, %s requires %d" % (n.bit_length(), alg.oid_name, alg.rsa_bits))
 
@@ -158,17 +166,17 @@ def _raw(pub):
     return pub.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
-def _trad_keygen(alg):
-    """Returns (trad_pk, trad_sk) in the encodings above."""
+def _trad_keygen(alg, randombytes):
+    """Returns (trad_pk, trad_sk) in the encodings above. An X25519 or X448 private key is
+    drawn from randombytes; an RSA key comes from the cryptography package's own generator."""
     if alg.trad == "RSA":
         key = rsa.generate_private_key(public_exponent=65537, key_size=alg.rsa_bits)
         sk = key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.TraditionalOpenSSL,
                                serialization.NoEncryption())
         nums = key.public_key().public_numbers()
         return _rsa_public_der(nums.n, nums.e), sk
-    key = _x_class(alg).generate()
-    sk = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
-    return _raw(key.public_key()), sk
+    sk = randombytes(alg.trad_ct_len)
+    return _raw(_x_class(alg).from_private_bytes(sk).public_key()), sk
 
 
 def _trad_encaps(alg, trad_pk, randombytes):
@@ -205,6 +213,7 @@ def _trad_decaps(alg, key, trad_ct):
         try:
             trad_ss = key.decrypt(trad_ct, _OAEP)
         except ValueError:
+            # section 3.3: an explicit error from a component is forwarded to the caller
             raise CompositeError("RSA-OAEP decryption failed")
         # The combiner inputs are fixed length (-23 section 3.3); an OAEP plaintext that is not
         # a 32-byte ss_len value is treated as a decapsulation error.
@@ -244,8 +253,9 @@ def split_private_key(alg, dk):
 
 
 def split_ciphertext(alg, ct):
-    """ct = frodo_ct || trad_ct (section 3.3 step 2). The ciphertext must be exactly the length
-    the algorithm fixes: the FrodoKEM ciphertext plus the RSA modulus size, or 32 / 56 bytes."""
+    """ct = frodo_ct || trad_ct (section 3.3 step 2). As section 3.3 requires, the ciphertext
+    must be exactly the length the algorithm fixes: the FrodoKEM ciphertext plus the RSA modulus
+    size, or 32 / 56 bytes."""
     if len(ct) != alg.ct_len:
         raise CompositeError("%s ciphertext must be %d bytes, got %d" % (alg.oid_name, alg.ct_len, len(ct)))
     n = alg.frodo.ct_len
@@ -270,10 +280,11 @@ def combiner(alg, frodo_ss, trad_ss, trad_ct, trad_pk):
 
 
 def keygen(alg, randombytes=os.urandom):
-    """Section 3.1. Returns (ek, dk). The FrodoKEM half draws from randombytes; the RSA, X25519
-    and X448 keys come from the cryptography package's own generator."""
+    """Section 3.1. Returns (ek, dk). The FrodoKEM seeds (s, seedSE, z) and then an X25519 or
+    X448 private key are drawn from randombytes; an RSA key comes from the cryptography
+    package's own generator."""
     frodo_pk, frodo_sk = frodokem.keygen(alg.frodo, randombytes)
-    trad_pk, trad_sk = _trad_keygen(alg)
+    trad_pk, trad_sk = _trad_keygen(alg, randombytes)
     return frodo_pk + trad_pk, frodo_sk + trad_sk
 
 
@@ -296,12 +307,11 @@ def encaps(alg, ek, randombytes=os.urandom):
 def decaps_detailed(alg, dk, ct, ek=None):
     """Section 3.3, returning the shared secret and the combiner inputs.
 
-    -01 does not say where Decaps obtains trad_pk, which the combiner needs. As in -23
-    section 3.3 and option 1 of its section 10.4, trad_pk is derived from trad_sk: the
-    RSAPublicKey is re-encoded from the RSAPrivateKey (-23 section 10.4.1), and the X25519 / X448
-    public key is the scalar multiple of the base point. If the caller also supplies ek (from a
-    certificate, or from OneAsymmetricKey.publicKey, options 2 and 3 of -23 section 10.4), it
-    must match the derived public key."""
+    The combiner needs trad_pk, which dk does not carry. Section 3.3 allows three sources, those
+    of -23 section 10.4. trad_pk is always derived from trad_sk: the RSAPublicKey is re-encoded
+    from the RSAPrivateKey (-23 section 10.4.1), and the X25519 / X448 public key is the scalar
+    multiple of the base point. If the caller also supplies ek (from a certificate, or from
+    OneAsymmetricKey.publicKey), it must match the derived public key."""
     frodo_sk, trad_sk = split_private_key(alg, dk)
     frodo_ct, trad_ct = split_ciphertext(alg, ct)
     key, trad_pk = _trad_private(alg, trad_sk)

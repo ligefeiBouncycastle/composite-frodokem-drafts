@@ -113,5 +113,46 @@ class GenerateVectorsTest(unittest.TestCase):
         self.assertEqual([tbs(c) for c in certificates(mine)], [tbs(c) for c in certificates(theirs)])
 
 
+@unittest.skipIf(generate_vectors.mldsa is None, "the cryptography package has no ML-DSA")
+class GenerateWithKeysTest(unittest.TestCase):
+    """generate_vectors.py --keys: the key material of ../vectors carried over unchanged."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.out = tempfile.mkdtemp()
+        cls.keys = os.path.join(util.VECTORS, "testvectors.json")
+        generate_vectors.generate(cls.out, log=lambda *a: None, keys_from=cls.keys)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.out)
+
+    def test_key_material_and_intermediates_unchanged(self):
+        repo, mine = util.load_testvectors(), util.load_testvectors(self.out)
+        for theirs, t in zip(repo["tests"], mine["tests"]):
+            with self.subTest(t["tcId"]):
+                for field in ("tcId", "ek", "dk", "c", "k"):
+                    self.assertEqual(t[field], theirs[field], field)
+                # the certificate is new, but carries the same key, under the new CA
+                self.assertNotEqual(t["x5c"], theirs["x5c"])
+                cert = pkix.Certificate(b64(t["x5c"]))
+                self.assertEqual(cert.composite_public_key()[1], b64(t["ek"]))
+                self.assertTrue(cert.verify_signature(pkix.Certificate(b64(mine["cacert"]))))
+        self.assertEqual(util.load_intermediates(self.out), util.load_intermediates())
+
+    def test_bad_key_material_refused(self):
+        repo = util.load_testvectors()
+        t = repo["tests"][0]
+        k = bytearray(b64(t["k"]))
+        k[0] ^= 1
+        t["k"] = base64.b64encode(bytes(k)).decode("ascii")
+        path = os.path.join(self.out, "bad.json")
+        with open(path, "w") as fh:
+            json.dump(repo, fh)
+        with self.assertRaises(RuntimeError) as cm:
+            generate_vectors.generate(os.path.join(self.out, "unused"), log=lambda *a: None, keys_from=path)
+        self.assertIn("does not check out", str(cm.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

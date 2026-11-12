@@ -86,7 +86,7 @@ class RoundTripTest(unittest.TestCase):
         got = [(a.oid_name, a.label, a.frodo.name, a.trad) for a in composite.ALGORITHMS]
         self.assertEqual(got, list(table))
         self.assertEqual([a.oid for a in composite.ALGORITHMS],
-                         ["2.25.244012452097848048867364395212826631944.%d" % i for i in range(1, 9)])
+                         ["1.3.6.1.4.1.22554.5.12.%d" % i for i in range(1, 9)])
         self.assertEqual(len(set(a.label for a in composite.ALGORITHMS)), 8)
 
     def test_spki_parameters_must_be_absent(self):

@@ -19,7 +19,7 @@ from pyasn1.type import univ
 from pyasn1_alt_modules import rfc8017
 
 from . import frodokem
-from .oids import PLACEHOLDER_OIDS
+from .oids import PROTOTYPE_OIDS
 
 
 class CompositeError(ValueError):
@@ -32,7 +32,7 @@ class CompositeAlgorithm(object):
     def __init__(self, name, label, frodo, trad, rsa_bits=None):
         self.name = name                    # e.g. "FrodoKEM976-SHAKE-X25519-SHA3-256"
         self.oid_name = "id-" + name
-        self.oid = PLACEHOLDER_OIDS[self.oid_name]
+        self.oid = PROTOTYPE_OIDS[self.oid_name]
         self.label = label.encode("ascii")  # the KEM Combiner Label (sections 3.4 and 5.1)
         self.frodo = frodo
         self.trad = trad                    # "RSA", "X25519" or "X448"

@@ -11,7 +11,7 @@ vectors in `../vectors`. It is not constant time and is not meant for production
 | `compfrodo/pkix.py` | SubjectPublicKeyInfo, OneAsymmetricKey and certificate handling |
 | `compfrodo/cms.py` | KEMRecipientInfo (RFC 9629), inside a minimal EnvelopedData / AuthEnvelopedData |
 | `compfrodo/ber.py` | Rewrites indefinite BER lengths as definite ones before decoding |
-| `compfrodo/oids.py` | OIDs, including the placeholder Composite FrodoKEM OIDs |
+| `compfrodo/oids.py` | OIDs, including the prototype Composite FrodoKEM OIDs |
 
 ## Requirements
 
@@ -68,6 +68,15 @@ it is written. The files are described in [../vectors/README.md](../vectors/READ
 makes new keys, ciphertexts and messages, except for the AuthEnvelopedData example: its random
 inputs are fixed, so a new run writes it again unchanged, apart from the two certificate
 signatures, which ML-DSA-65 hedges.
+
+With `--keys`, the key pairs, ciphertexts and shared secrets are read from an earlier
+`testvectors.json` instead of being generated, and checked before they are used. The CA, the
+certificates, the OneAsymmetricKey encodings and the CMS messages are still made anew. This moves
+the vectors to new OIDs without changing their key material:
+
+```
+python3 generate_vectors.py OUTPUT_DIR --keys OLD/testvectors.json
+```
 
 `cms.json` lists 13 CMS messages, each an object with `label`, `recipients` (the `tcId`s of the
 test cases whose keys can open it), `content` and `cms` (both base64; `cms` is a DER ContentInfo).

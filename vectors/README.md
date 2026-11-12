@@ -26,7 +26,8 @@ AES-256-GCM. Each of its random inputs is derived from a fixed string with SHAKE
 explains, so a new run of the generator writes it again unchanged, except for the ML-DSA-65
 signatures on its two certificates. Its lines are at most 72 characters long.
 
-Everything else is new on each run of the generator.
+Everything else is new on each run of the generator, except the key pairs, ciphertexts and shared
+secrets when it is run with `--keys` (see below).
 
 ### testvectors.json
 
@@ -55,24 +56,28 @@ the raw 32- or 56-byte public key.
 The drafts do not say how an X25519 or X448 `trad_sk` is encoded. These vectors assume the raw 32-
 or 56-byte RFC 7748 private key, not an RFC 8410 CurvePrivateKey.
 
-## Placeholder OIDs
+## Prototype OIDs
 
 The drafts leave the OIDs as TBD1 to TBD8 under id-alg (1.3.6.1.5.5.7.6). Until IANA assigns them,
-these vectors use the following **unregistered placeholders**, which will change:
+these vectors use the prototype OIDs listed in the IETF Hackathon
+[pqc-certificates OID mapping](https://github.com/IETF-Hackathon/pqc-certificates/blob/master/docs/oid_mapping.md)
+(docs/oid_mapping.md). They will change when the final OIDs are assigned:
 
-| Algorithm | Draft | Placeholder OID |
-|-----------|-------|-----------------|
-| id-FrodoKEM976-SHAKE-RSA3072-SHA3-256  | TBD1 | 2.25.244012452097848048867364395212826631944.1 |
-| id-FrodoKEM976-SHAKE-X25519-SHA3-256   | TBD2 | 2.25.244012452097848048867364395212826631944.2 |
-| id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256 | TBD3 | 2.25.244012452097848048867364395212826631944.3 |
-| id-FrodoKEM1344-SHAKE-X448-SHA3-256    | TBD4 | 2.25.244012452097848048867364395212826631944.4 |
-| id-FrodoKEM976-AES-RSA3072-SHA3-256    | TBD5 | 2.25.244012452097848048867364395212826631944.5 |
-| id-FrodoKEM976-AES-X25519-SHA3-256     | TBD6 | 2.25.244012452097848048867364395212826631944.6 |
-| id-FrodoKEM1344-AES-RSA4096-SHA3-256   | TBD7 | 2.25.244012452097848048867364395212826631944.7 |
-| id-FrodoKEM1344-AES-X448-SHA3-256      | TBD8 | 2.25.244012452097848048867364395212826631944.8 |
-
-The placeholders are the ones the -01 vectors used, in the same order. They now stand for the -02
-algorithms, whose SHAKE variants have new names and Labels, so no -01 vector is valid under them.
+| Algorithm | Draft | Prototype OID |
+|-----------|-------|---------------|
+| id-FrodoKEM976-SHAKE-RSA3072-SHA3-256  | TBD1 | 1.3.6.1.4.1.22554.5.12.1 |
+| id-FrodoKEM976-SHAKE-X25519-SHA3-256   | TBD2 | 1.3.6.1.4.1.22554.5.12.2 |
+| id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256 | TBD3 | 1.3.6.1.4.1.22554.5.12.3 |
+| id-FrodoKEM1344-SHAKE-X448-SHA3-256    | TBD4 | 1.3.6.1.4.1.22554.5.12.4 |
+| id-FrodoKEM976-AES-RSA3072-SHA3-256    | TBD5 | 1.3.6.1.4.1.22554.5.12.5 |
+| id-FrodoKEM976-AES-X25519-SHA3-256     | TBD6 | 1.3.6.1.4.1.22554.5.12.6 |
+| id-FrodoKEM1344-AES-RSA4096-SHA3-256   | TBD7 | 1.3.6.1.4.1.22554.5.12.7 |
+| id-FrodoKEM1344-AES-X448-SHA3-256      | TBD8 | 1.3.6.1.4.1.22554.5.12.8 |
 
 The OIDs appear only in the certificates, the OneAsymmetricKey encodings and the CMS messages. They
 are not an input to the combiner: the Label is.
+
+An earlier version of these -02 vectors used other placeholder OIDs. When the OIDs changed, the
+vectors were written again with `generate_vectors.py --keys`, which keeps the key pairs: `ek`, `dk`,
+`c`, `k` and every combiner intermediate are unchanged, and only the CA, the certificates, the
+OneAsymmetricKey encodings and the CMS messages are new.

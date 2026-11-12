@@ -35,7 +35,9 @@ place of the ML-KEM one. The Label is the algorithm name without "id-" and "-SHA
 "FrodoKEM976-SHAKE-X25519". In CMS, the key-encryption key always wraps with AES-Wrap-256.
 
 The OIDs are still TBD1 to TBD8 in the drafts. Until IANA assigns them, the vectors and the code use
-unregistered placeholder OIDs; see [vectors/README.md](vectors/README.md).
+the prototype OIDs listed in the IETF Hackathon
+[pqc-certificates OID mapping](https://github.com/IETF-Hackathon/pqc-certificates/blob/master/docs/oid_mapping.md);
+see [vectors/README.md](vectors/README.md).
 
 ## Layout
 

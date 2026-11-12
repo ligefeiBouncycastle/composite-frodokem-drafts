@@ -1,6 +1,6 @@
 """Generate the Composite FrodoKEM test vectors with compfrodo.
 
-Usage: python3 generate_vectors.py OUTPUT_DIR
+Usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON]
 
 ../vectors holds the output of one run. The files written to OUTPUT_DIR are:
 
@@ -15,9 +15,12 @@ Usage: python3 generate_vectors.py OUTPUT_DIR
 - cms-example-authenveloped-frodokem976-shake-x25519.txt: an AuthEnvelopedData example built
   from fixed inputs, with the originator's and the recipient's intermediate values.
 
-Except in the last file, every key, ciphertext and message is new on each run. The certificates
-are issued by ML-DSA-65 CAs, so this script needs a cryptography package with ML-DSA support
-(tested with 50.0.2). Each value is checked with compfrodo before it is written.
+Except in the last file, every key, ciphertext and message is new on each run. With --keys, the
+key pairs, ciphertexts and shared secrets (ek, dk, c and k) are instead read from an earlier
+testvectors.json, so that, for example, the vectors can move to new OIDs with the same key
+material; the CA, certificates, OneAsymmetricKey encodings and CMS messages are still new. The
+certificates are issued by ML-DSA-65 CAs, so this script needs a cryptography package with ML-DSA
+support (tested with 50.0.2). Each value is checked with compfrodo before it is written.
 """
 
 import base64
@@ -98,7 +101,7 @@ def _tbd(alg):
 # A short ASN.1 dump, for the -kemri.txt files and the example
 # ---------------------------------------------------------------------------
 
-_OID_NAMES = dict((oid, name) for name, oid in oids.PLACEHOLDER_OIDS.items())
+_OID_NAMES = dict((oid, name) for name, oid in oids.PROTOTYPE_OIDS.items())
 _OID_NAMES.update({
     oids.ID_ORI_KEM: "id-ori-kem",
     oids.ID_ALG_HKDF_WITH_SHA256: "id-alg-hkdf-with-sha256",
@@ -256,7 +259,7 @@ class _CA(object):
 def _intermediates(alg, e):
     """The combiner-intermediates.txt block of one test case."""
     combined = e["frodo_ss"] + e["trad_ss"] + e["trad_ct"] + e["trad_pk"] + e["label"]
-    out = ["# %s (placeholder OID %s, draft %s)" % (alg.oid_name, alg.oid, _tbd(alg))]
+    out = ["# %s (prototype OID %s, draft %s)" % (alg.oid_name, alg.oid, _tbd(alg))]
     for field in ("frodo_ss", "trad_ss", "trad_ct", "trad_pk"):
         out += ["%s (%d bytes)" % (field, len(e[field])), "  " + e[field].hex()]
     out += ['Label ("%s")' % e["label"].decode("ascii"), "  " + e["label"].hex(),
@@ -272,17 +275,42 @@ ciphertexts are those of the corresponding test case in testvectors.json.
 """
 
 
-def generate(out_dir, log=print):
+def _previous_keys(path):
+    """{tcId: (ek, dk, c, k)} from an earlier testvectors.json, each case checked: ek must be the
+    public key of dk, and c must decapsulate to k."""
+    with open(path) as fh:
+        tests = json.load(fh)["tests"]
+    result = {}
+    for t in tests:
+        alg = composite.algorithm(t["tcId"])
+        ek, dk, c, k = (base64.b64decode(t[f]) for f in ("ek", "dk", "c", "k"))
+        if composite.public_key_from_private(alg, dk) != ek or composite.decaps(alg, dk, c) != k:
+            raise RuntimeError("%s: the %s test case does not check out" % (path, t["tcId"]))
+        result[t["tcId"]] = (ek, dk, c, k)
+    missing = [a.oid_name for a in composite.ALGORITHMS if a.oid_name not in result]
+    if missing:
+        raise RuntimeError("%s has no test case for %s" % (path, ", ".join(missing)))
+    return result
+
+
+def generate(out_dir, log=print, keys_from=None):
+    """Write the vectors to out_dir. keys_from names an earlier testvectors.json whose key pairs,
+    ciphertexts and shared secrets are used instead of new ones."""
     if mldsa is None:
         raise RuntimeError("generate_vectors.py needs a cryptography package with ML-DSA support "
                            "(tested with 50.0.2)")
+    previous = _previous_keys(keys_from) if keys_from is not None else None
     ca = _CA()
     keys = {}
     tests = []
     blocks = []
     for serial, alg in enumerate(composite.ALGORITHMS, start=2):
-        ek, dk = composite.keygen(alg)
-        e = composite.encaps_detailed(alg, ek)
+        if previous is None:
+            ek, dk = composite.keygen(alg)
+            e = composite.encaps_detailed(alg, ek)
+        else:
+            ek, dk, c, k = previous[alg.oid_name]
+            e = dict(composite.decaps_detailed(alg, dk, c), ct=c)
         d = composite.decaps_detailed(alg, dk, e["ct"])
         for field in ("ss", "frodo_ss", "trad_ss", "trad_ct", "trad_pk", "label"):
             if d[field] != e[field]:
@@ -470,8 +498,7 @@ def cms_example():
             "certificate carries an %s public key." % (CONTENT.decode("ascii"), alg.oid_name)))
     b("\n".join([
         "  Composite KEM:        %s" % alg.oid_name,
-        "                        (%s; placeholder OID" % _tbd(alg),
-        "                        %s)" % alg.oid,
+        "                        (%s; prototype OID %s)" % (_tbd(alg), alg.oid),
         "  rid:                  subjectKeyIdentifier",
         "  KDF:                  id-alg-hkdf-with-sha256, salt \"\"",
         "  ukm:                  absent",
@@ -564,11 +591,15 @@ def cms_example():
 
 
 def main(argv):
-    if len(argv) != 2:
-        sys.stderr.write("usage: python3 generate_vectors.py OUTPUT_DIR\n")
+    if len(argv) == 2:
+        keys_from = None
+    elif len(argv) == 4 and argv[2] == "--keys":
+        keys_from = argv[3]
+    else:
+        sys.stderr.write("usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON]\n")
         return 2
     try:
-        tests, messages = generate(argv[1])
+        tests, messages = generate(argv[1], keys_from=keys_from)
     except RuntimeError as e:
         sys.stderr.write(str(e) + "\n")
         return 1

@@ -1,13 +1,14 @@
 """Object identifiers.
 
 The drafts leave the Composite FrodoKEM OIDs as TBD1 to TBD8 under id-alg (1.3.6.1.5.5.7.6).
-Until IANA assigns them, these unregistered placeholders are used, which match the vectors in
-../vectors. They will change; this table is the only place to edit.
+Until IANA assigns them, these prototype OIDs are used, the ones listed in the IETF Hackathon
+pqc-certificates OID mapping (docs/oid_mapping.md). They match the vectors in ../vectors and will
+change; this table is the only place to edit.
 """
 
-_ARC = "2.25.244012452097848048867364395212826631944"
+_ARC = "1.3.6.1.4.1.22554.5.12"
 
-PLACEHOLDER_OIDS = {
+PROTOTYPE_OIDS = {
     "id-FrodoKEM976-SHAKE-RSA3072-SHA3-256": _ARC + ".1",   # TBD1
     "id-FrodoKEM976-SHAKE-X25519-SHA3-256": _ARC + ".2",    # TBD2
     "id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256": _ARC + ".3",  # TBD3

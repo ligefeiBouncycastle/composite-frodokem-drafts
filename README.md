@@ -18,21 +18,23 @@ Composite FrodoKEM combines standard (salted) FrodoKEM, as specified in draft-lo
 and ISO/IEC 18033-2:2006/Amd 2:2026, with RSA-OAEP, X25519 or X448. The two drafts define eight
 algorithms:
 
-| Algorithm                              | FrodoKEM            | Traditional |
-|----------------------------------------|---------------------|-------------|
-| id-FrodoKEM976-SHAKE-RSA3072-SHA3-256  | FrodoKEM-976-SHAKE  | RSA-3072    |
-| id-FrodoKEM976-SHAKE-X25519-SHA3-256   | FrodoKEM-976-SHAKE  | X25519      |
-| id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256 | FrodoKEM-1344-SHAKE | RSA-4096    |
-| id-FrodoKEM1344-SHAKE-X448-SHA3-256    | FrodoKEM-1344-SHAKE | X448        |
-| id-FrodoKEM976-AES-RSA3072-SHA3-256    | FrodoKEM-976-AES    | RSA-3072    |
-| id-FrodoKEM976-AES-X25519-SHA3-256     | FrodoKEM-976-AES    | X25519      |
-| id-FrodoKEM1344-AES-RSA4096-SHA3-256   | FrodoKEM-1344-AES   | RSA-4096    |
-| id-FrodoKEM1344-AES-X448-SHA3-256      | FrodoKEM-1344-AES   | X448        |
+| Algorithm                              | FrodoKEM            | Traditional | Label (Section 5.1)            |
+|----------------------------------------|---------------------|-------------|--------------------------------|
+| id-FrodoKEM976-SHAKE-RSA3072-SHA3-256  | FrodoKEM-976-SHAKE  | RSA-3072    | FrodoKEM976-SHAKE-RSAOAEP3072  |
+| id-FrodoKEM976-SHAKE-X25519-SHA3-256   | FrodoKEM-976-SHAKE  | X25519      | FrodoKEM976-SHAKE-X25519       |
+| id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256 | FrodoKEM-1344-SHAKE | RSA-4096    | FrodoKEM1344-SHAKE-RSAOAEP4096 |
+| id-FrodoKEM1344-SHAKE-X448-SHA3-256    | FrodoKEM-1344-SHAKE | X448        | FrodoKEM1344-SHAKE-X448        |
+| id-FrodoKEM976-AES-RSA3072-SHA3-256    | FrodoKEM-976-AES    | RSA-3072    | FrodoKEM976-AES-RSAOAEP3072    |
+| id-FrodoKEM976-AES-X25519-SHA3-256     | FrodoKEM-976-AES    | X25519      | FrodoKEM976-AES-X25519         |
+| id-FrodoKEM1344-AES-RSA4096-SHA3-256   | FrodoKEM-1344-AES   | RSA-4096    | FrodoKEM1344-AES-RSAOAEP4096   |
+| id-FrodoKEM1344-AES-X448-SHA3-256      | FrodoKEM-1344-AES   | X448        | FrodoKEM1344-AES-X448          |
 
 The shared secret is `SHA3-256(frodo_ss || trad_ss || trad_ct || trad_pk || Label)`. This is the
 combiner of Composite ML-KEM (draft-ietf-lamps-pq-composite-kem), with the FrodoKEM shared secret in
-place of the ML-KEM one. The Label is the algorithm name without "id-" and "-SHA3-256", e.g.
-"FrodoKEM976-SHAKE-X25519". In CMS, the key-encryption key always wraps with AES-Wrap-256.
+place of the ML-KEM one. The Label is the one the table gives. For X25519 and X448 it is the
+algorithm name without "id-" and "-SHA3-256"; for RSA it names RSA-OAEP, as in Composite ML-KEM, so
+id-FrodoKEM976-SHAKE-RSA3072-SHA3-256 has the Label "FrodoKEM976-SHAKE-RSAOAEP3072". In CMS, the
+key-encryption key always wraps with AES-Wrap-256.
 
 The OIDs are still TBD1 to TBD8 in the drafts. Until IANA assigns them, the vectors and the code use
 the prototype OIDs listed in the IETF Hackathon

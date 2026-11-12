@@ -11,11 +11,11 @@ import unittest
 
 from pyasn1.codec.der import decoder as der_decoder
 from pyasn1.codec.der import encoder as der_encoder
-from pyasn1_alt_modules import rfc5280
+from pyasn1_alt_modules import rfc5083, rfc5280, rfc5652
 
 import util
 
-from compfrodo import cms, composite, pkix
+from compfrodo import cms, composite, oids, pkix
 
 import generate_vectors
 
@@ -151,6 +151,125 @@ class GenerateWithKeysTest(unittest.TestCase):
             json.dump(repo, fh)
         with self.assertRaises(RuntimeError) as cm:
             generate_vectors.generate(os.path.join(self.out, "unused"), log=lambda *a: None, keys_from=path)
+        self.assertIn("does not check out", str(cm.exception))
+
+
+def message_parts(der):
+    """(the fields of the EnvelopedData or AuthEnvelopedData other than recipientInfos,
+    {kem OID: (the KEMRecipientInfo without its encryptedKey, the encryptedKey)})."""
+    ci, _ = der_decoder.decode(der, asn1Spec=rfc5652.ContentInfo())
+    auth = str(ci["contentType"]) == oids.ID_AUTH_ENVELOPED_DATA
+    env, _ = der_decoder.decode(bytes(ci["content"]), asn1Spec=rfc5083.AuthEnvelopedData() if auth else rfc5652.EnvelopedData())
+    fields = [(name, der_encoder.encode(env[name])) for name in env.keys()
+              if name != "recipientInfos" and env[name].isValue]
+    recipients = {}
+    for ri in env["recipientInfos"]:
+        kemri = cms.parse_kemri(ri)
+        encrypted_key = bytes(kemri["encryptedKey"])
+        kemri["encryptedKey"] = b""
+        recipients[str(kemri["kem"]["algorithm"])] = (der_encoder.encode(kemri), encrypted_key)
+    return (str(ci["contentType"]), fields), recipients
+
+
+def read_all(directory):
+    files = {}
+    for f in sorted(os.listdir(directory)):
+        if f != "README.md":
+            with open(os.path.join(directory, f), "rb") as fh:
+                files[f] = fh.read()
+    return files
+
+
+@unittest.skipIf(generate_vectors.mldsa is None, "the cryptography package has no ML-DSA")
+class RelabelTest(unittest.TestCase):
+    """generate_vectors.py --relabel: only the values that depend on a Label change."""
+
+    PATCHED = ("id-FrodoKEM976-SHAKE-X25519-SHA3-256", "id-FrodoKEM1344-AES-RSA4096-SHA3-256")
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_relabel_keeps_the_repository_vectors(self):
+        # The repository vectors already have the current Labels, so nothing changes.
+        out = os.path.join(self.tmp, "out")
+        generate_vectors.relabel(util.VECTORS, out, log=lambda *a: None)
+        self.assertEqual(read_all(out), read_all(util.VECTORS))
+
+    def test_relabel_and_back(self):
+        algs = [composite.algorithm(n) for n in self.PATCHED]
+        labels = [a.label for a in algs]
+        other = os.path.join(self.tmp, "other")
+        back = os.path.join(self.tmp, "back")
+        try:
+            for a in algs:
+                a.label = b"compfrodo test Label " + a.label
+            generate_vectors.relabel(util.VECTORS, other, log=lambda *a: None)
+        finally:
+            for a, label in zip(algs, labels):
+                a.label = label
+        generate_vectors.relabel(other, back, log=lambda *a: None)
+        self.assertEqual(read_all(back), read_all(util.VECTORS))
+
+        # With the other Labels, k, the Label, combiner input length and ss intermediates and the
+        # encryptedKey of the patched algorithms' KEMRecipientInfos change, and nothing else does.
+        repo, mine = util.load_testvectors(), util.load_testvectors(other)
+        self.assertEqual(mine["cacert"], repo["cacert"])
+        for theirs, t in zip(repo["tests"], mine["tests"]):
+            for field in theirs:
+                with self.subTest(t["tcId"], field=field):
+                    if field == "k" and t["tcId"] in self.PATCHED:
+                        self.assertNotEqual(t[field], theirs[field])
+                    else:
+                        self.assertEqual(t[field], theirs[field])
+        ri, mi = util.load_intermediates(), util.load_intermediates(other)
+        for tc in ri:
+            for field in ri[tc]:
+                with self.subTest(tc, field=field):
+                    if field in ("label", "input_length", "ss") and tc in self.PATCHED:
+                        self.assertNotEqual(mi[tc][field], ri[tc][field])
+                    else:
+                        self.assertEqual(mi[tc][field], ri[tc][field])
+        patched_oids = set(composite.algorithm(n).oid for n in self.PATCHED)
+        with open(os.path.join(util.VECTORS, "cms.json")) as fh:
+            repo_messages = json.load(fh)
+        with open(os.path.join(other, "cms.json")) as fh:
+            messages = json.load(fh)
+        for theirs, m in zip(repo_messages, messages):
+            with self.subTest(m["label"]):
+                self.assertEqual((m["label"], m["recipients"], m["content"]),
+                                 (theirs["label"], theirs["recipients"], theirs["content"]))
+                (fields, recipients), (their_fields, their_recipients) = message_parts(b64(m["cms"])), message_parts(b64(theirs["cms"]))
+                self.assertEqual(fields, their_fields)
+                self.assertEqual(sorted(recipients), sorted(their_recipients))
+                for oid in recipients:
+                    self.assertEqual(recipients[oid][0], their_recipients[oid][0])
+                    self.assertEqual(recipients[oid][1] != their_recipients[oid][1], oid in patched_oids)
+        files = read_all(other)
+        for name, data in read_all(util.VECTORS).items():
+            if name not in ("testvectors.json", "combiner-intermediates.txt", "cms.json",
+                            generate_vectors.EXAMPLE_FILE) and not name.startswith("cms-FrodoKEM976-SHAKE-X25519-"):
+                self.assertEqual(files[name], data, name)
+        # The example has the other Label, but keeps its certificates, signatures and all.
+        example = files[generate_vectors.EXAMPLE_FILE].decode("ascii")
+        theirs = read_all(util.VECTORS)[generate_vectors.EXAMPLE_FILE].decode("ascii")
+        self.assertNotEqual(example, theirs)
+        self.assertEqual(certificates(example), certificates(theirs))
+
+    def test_wrong_earlier_label_refused(self):
+        earlier = os.path.join(self.tmp, "earlier")
+        shutil.copytree(util.VECTORS, earlier)
+        path = os.path.join(earlier, "combiner-intermediates.txt")
+        with open(path) as fh:
+            text = fh.read()
+        label = composite.ALGORITHMS[0].label
+        self.assertIn(label.hex(), text)
+        with open(path, "w") as fh:
+            fh.write(text.replace(label.hex(), (label + b"!").hex(), 1))
+        with self.assertRaises(RuntimeError) as cm:
+            generate_vectors.relabel(earlier, os.path.join(self.tmp, "out"), log=lambda *a: None)
         self.assertIn("does not check out", str(cm.exception))
 
 

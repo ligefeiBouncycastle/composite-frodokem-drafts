@@ -1,6 +1,6 @@
 """Generate the Composite FrodoKEM test vectors with compfrodo.
 
-Usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON]
+Usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON | --relabel VECTORS_DIR]
 
 ../vectors holds the output of one run. The files written to OUTPUT_DIR are:
 
@@ -18,9 +18,17 @@ Usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON]
 Except in the last file, every key, ciphertext and message is new on each run. With --keys, the
 key pairs, ciphertexts and shared secrets (ek, dk, c and k) are instead read from an earlier
 testvectors.json, so that, for example, the vectors can move to new OIDs with the same key
-material; the CA, certificates, OneAsymmetricKey encodings and CMS messages are still new. The
-certificates are issued by ML-DSA-65 CAs, so this script needs a cryptography package with ML-DSA
-support (tested with 50.0.2). Each value is checked with compfrodo before it is written.
+material; the CA, certificates, OneAsymmetricKey encodings and CMS messages are still new.
+
+With --relabel, everything is read from an earlier output directory, and only the values that
+depend on a KEM Combiner Label are computed again with the Labels compfrodo now uses: k, the
+combiner output ss, and the encryptedKey of each KEMRecipientInfo, which wraps the same CEK under
+the KEK of the new shared secret. The earlier Labels are read from that directory's
+combiner-intermediates.txt. The CA, certificates, key encodings, ciphertexts, CEKs, IVs and
+nonces are kept, and so is every value of an algorithm whose Label did not change.
+
+The certificates are issued by ML-DSA-65 CAs, so this script needs a cryptography package with
+ML-DSA support (tested with 50.0.2). Each value is checked with compfrodo before it is written.
 """
 
 import base64
@@ -28,6 +36,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import sys
 import textwrap
 
@@ -39,7 +48,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.keywrap import aes_key_wrap
+from cryptography.hazmat.primitives.keywrap import InvalidUnwrap, aes_key_unwrap, aes_key_wrap
 from cryptography.x509.oid import NameOID
 from pyasn1.codec.der import decoder as der_decoder
 from pyasn1.codec.der import encoder as der_encoder
@@ -95,6 +104,22 @@ def _write(out_dir, name, text):
 
 def _tbd(alg):
     return "TBD%d" % (composite.ALGORITHMS.index(alg) + 1)
+
+
+def _single_label(alg):
+    """The cms.json label of the EnvelopedData message for alg alone."""
+    return "EnvelopedData, AES-256-CBC, AES-Wrap-256, issuerAndSerialNumber: " + alg.name
+
+
+def _tbs(der):
+    cert, _ = der_decoder.decode(der, asn1Spec=rfc5280.Certificate())
+    return der_encoder.encode(cert["tbsCertificate"])
+
+
+def _certificates(text):
+    """The DER of each CERTIFICATE PEM block in text, in order."""
+    return [base64.b64decode(b.replace("\n", ""))
+            for b in re.findall(r"-----BEGIN CERTIFICATE-----\n(.*?)\n-----END CERTIFICATE-----", text, re.S)]
 
 
 # ---------------------------------------------------------------------------
@@ -340,10 +365,8 @@ def generate(out_dir, log=print, keys_from=None):
         log(label)
         return der
 
-    by_alg = {}
     for alg in composite.ALGORITHMS:
-        by_alg[alg.oid_name] = add("EnvelopedData, AES-256-CBC, AES-Wrap-256, issuerAndSerialNumber: " + alg.name,
-                                   [alg.oid_name])
+        add(_single_label(alg), [alg.oid_name])
     add("EnvelopedData, subjectKeyIdentifier rid", ["id-FrodoKEM976-SHAKE-X25519-SHA3-256"],
         rid_type="subjectKeyIdentifier")
     add("EnvelopedData, ukm present", ["id-FrodoKEM1344-SHAKE-X448-SHA3-256"], ukm=b"compfrodo ukm")
@@ -354,13 +377,18 @@ def generate(out_dir, log=print, keys_from=None):
     add("EnvelopedData, two recipients",
         ["id-FrodoKEM976-SHAKE-X25519-SHA3-256", "id-FrodoKEM1344-AES-RSA4096-SHA3-256"])
 
+    _write_vectors(out_dir, ca.der, tests, blocks, keys, messages, cms_example(), log)
+    return tests, messages
+
+
+def _write_vectors(out_dir, cacert, tests, blocks, keys, messages, example, log):
     if not os.path.isdir(out_dir):
         os.makedirs(out_dir)
     with open(os.path.join(out_dir, "testvectors.json"), "w") as fh:
-        json.dump({"cacert": _b64(ca.der), "tests": tests}, fh, indent=1)
+        json.dump({"cacert": _b64(cacert), "tests": tests}, fh, indent=1)
         fh.write("\n")
     _write(out_dir, "combiner-intermediates.txt", INTERMEDIATES_HEADER + "".join("\n" + b for b in blocks))
-    _write(out_dir, "cacert.pem", _pem("CERTIFICATE", ca.der))
+    _write(out_dir, "cacert.pem", _pem("CERTIFICATE", cacert))
     with open(os.path.join(out_dir, "cms.json"), "w") as fh:
         json.dump(messages, fh, indent=1)
         fh.write("\n")
@@ -368,7 +396,7 @@ def generate(out_dir, log=print, keys_from=None):
     for name in PEM_EXAMPLES:
         alg = composite.algorithm(name)
         dk, cert = keys[name]
-        der = by_alg[name]
+        der = base64.b64decode([m["cms"] for m in messages if m["label"] == _single_label(alg)][0])
         base = "cms-" + alg.name
         _write(out_dir, base + "-enveloped.pem", _pem("CMS", der))
         _write(out_dir, base + "-recipient-cert.pem", _pem("CERTIFICATE", cert))
@@ -380,8 +408,125 @@ def generate(out_dir, log=print, keys_from=None):
                "KEMRecipientInfo in %s-enveloped.pem; OCTET STRINGs over 64 bytes\nare shown by length only.\n\n%s\n"
                % (base, "\n".join(_dump(bytes(kemri)))))
 
-    _write(out_dir, EXAMPLE_FILE, cms_example())
+    _write(out_dir, EXAMPLE_FILE, example)
     log(EXAMPLE_FILE)
+
+
+# ---------------------------------------------------------------------------
+# --relabel: an earlier output with the current Labels
+# ---------------------------------------------------------------------------
+
+def _earlier_labels(path):
+    """{tcId: Label} from an earlier combiner-intermediates.txt."""
+    with open(path) as fh:
+        text = fh.read()
+    labels = {}
+    for block in re.split(r"\n(?=# id-)", text):
+        m = re.match(r"# (id-\S+)", block)
+        if m:
+            labels[m.group(1)] = bytes.fromhex(re.search(r"^Label \(.*\)\n  ([0-9a-f]+)$", block, re.M).group(1))
+    return labels
+
+
+def _combine(d, label):
+    """The combiner of section 3.4 over the inputs in d, with the given Label."""
+    return hashlib.sha3_256(d["frodo_ss"] + d["trad_ss"] + d["trad_ct"] + d["trad_pk"] + label).digest()
+
+
+def _relabel_message(der, keys, earlier_labels):
+    """der with the encryptedKey of each KEMRecipientInfo wrapped again: the CEK is unwrapped under
+    the KEK of the shared secret with the earlier Label and wrapped under the KEK of the shared
+    secret with the current one. Every other field is kept."""
+    ci, rest = der_decoder.decode(der, asn1Spec=rfc5652.ContentInfo())
+    spec = {oids.ID_ENVELOPED_DATA: rfc5652.EnvelopedData,
+            oids.ID_AUTH_ENVELOPED_DATA: rfc5083.AuthEnvelopedData}[str(ci["contentType"])]
+    env, rest2 = der_decoder.decode(bytes(ci["content"]), asn1Spec=spec())
+    if rest or rest2:
+        raise RuntimeError("trailing data in an earlier CMS message")
+    ceks = set()
+    for ri in env["recipientInfos"]:
+        kemri = cms.parse_kemri(ri)
+        if kemri is None:
+            raise RuntimeError("an earlier CMS message has a recipient that is not a KEMRecipientInfo")
+        alg = composite.algorithm(str(kemri["kem"]["algorithm"]))
+        dk = keys[alg.oid_name][0]
+        d = composite.decaps_detailed(alg, dk, bytes(kemri["kemct"]))
+        ukm = bytes(kemri["ukm"]) if kemri["ukm"].isValue else None
+        kek_length = int(kemri["kekLength"])
+        earlier_kek = cms.derive_kek(_combine(d, earlier_labels[alg.oid_name]), kemri["wrap"], kek_length, ukm)
+        try:
+            cek = aes_key_unwrap(earlier_kek, bytes(kemri["encryptedKey"]))
+        except InvalidUnwrap:
+            raise RuntimeError("an earlier CMS message does not open for %s with its earlier Label" % alg.oid_name)
+        kemri["encryptedKey"] = aes_key_wrap(cms.derive_kek(d["ss"], kemri["wrap"], kek_length, ukm), cek)
+        ri["ori"]["oriValue"] = der_encoder.encode(kemri)
+        ceks.add(cek)
+    if len(ceks) != 1:
+        raise RuntimeError("the recipients of an earlier CMS message do not share one CEK")
+    ci["content"] = der_encoder.encode(env)
+    return der_encoder.encode(ci)
+
+
+def relabel(earlier_dir, out_dir, log=print):
+    """Write to out_dir the vectors of earlier_dir, with only the values that depend on a Label
+    computed again with the current Labels. Each earlier value is checked first: the certificates
+    against the CA, the key encodings against dk, and each k and CMS message against the earlier
+    Label."""
+    if mldsa is None:
+        raise RuntimeError("generate_vectors.py needs a cryptography package with ML-DSA support "
+                           "(tested with 50.0.2)")
+
+    def read(name):
+        with open(os.path.join(earlier_dir, name)) as fh:
+            return fh.read()
+
+    earlier = json.loads(read("testvectors.json"))
+    earlier_messages = json.loads(read("cms.json"))
+    earlier_example = read(EXAMPLE_FILE)
+    earlier_labels = _earlier_labels(os.path.join(earlier_dir, "combiner-intermediates.txt"))
+    cacert = base64.b64decode(earlier["cacert"])
+    ca = pkix.Certificate(cacert)
+    by_id = dict((t["tcId"], t) for t in earlier["tests"])
+    missing = [a.oid_name for a in composite.ALGORITHMS if a.oid_name not in by_id or a.oid_name not in earlier_labels]
+    if missing:
+        raise RuntimeError("%s has no test case for %s" % (earlier_dir, ", ".join(missing)))
+    changed = set(a.oid_name for a in composite.ALGORITHMS if earlier_labels[a.oid_name] != a.label)
+
+    keys = {}
+    tests = []
+    blocks = []
+    for alg in composite.ALGORITHMS:
+        t = by_id[alg.oid_name]
+        ek, cert, dk, c, k = (base64.b64decode(t[f]) for f in ("ek", "x5c", "dk", "c", "k"))
+        d = composite.decaps_detailed(alg, dk, c)
+        parsed = pkix.Certificate(cert)
+        if (composite.public_key_from_private(alg, dk) != ek
+                or parsed.composite_public_key() != (alg, ek) or not parsed.verify_signature(ca)
+                or base64.b64decode(t["dk_pkcs8"]) != pkix.encode_private_key(alg, dk)
+                or base64.b64decode(t["dk_pkcs8_v2"]) != pkix.encode_private_key(alg, dk, include_public_key=True)
+                or _combine(d, earlier_labels[alg.oid_name]) != k):
+            raise RuntimeError("%s: the %s test case does not check out" % (earlier_dir, alg.oid_name))
+        keys[alg.oid_name] = (dk, cert)
+        tests.append(dict(t, k=_b64(d["ss"])))
+        blocks.append(_intermediates(alg, d))
+        log(alg.oid_name + (" (new Label)" if alg.oid_name in changed else ""))
+
+    messages = []
+    for m in earlier_messages:
+        der = _relabel_message(base64.b64decode(m["cms"]), keys, earlier_labels)
+        if not changed.intersection(m["recipients"]) and der != base64.b64decode(m["cms"]):
+            raise AssertionError("%s changed, although none of its recipients has a new Label" % m["label"])
+        for r in m["recipients"]:
+            dk, cert = keys[r]
+            if cms.open_envelope(der, pkix.Certificate(cert), dk)[0] != base64.b64decode(m["content"]):
+                raise AssertionError("%s does not open for %s" % (m["label"], r))
+        messages.append(dict(m, cms=_b64(der)))
+        log(m["label"])
+
+    example = cms_example(earlier_example)
+    if EXAMPLE_ALG not in changed and example != earlier_example:
+        raise AssertionError("the CMS example changed, although its Label did not")
+    _write_vectors(out_dir, cacert, tests, blocks, keys, messages, example, log)
     return tests, messages
 
 
@@ -413,9 +558,11 @@ class _FixedRandom(object):
             raise AssertionError("fixed inputs were left over")
 
 
-def cms_example():
+def cms_example(earlier=None):
     """The text of EXAMPLE_FILE. Every value comes from the fixed inputs except the two ML-DSA-65
-    certificate signatures, which are hedged."""
+    certificate signatures, which are hedged. If earlier, the text of an earlier EXAMPLE_FILE, is
+    given, each of its certificates whose TBSCertificate is unchanged is used again, signature and
+    all."""
     if mldsa is None:
         raise RuntimeError("the CMS example needs a cryptography package with ML-DSA support")
     alg = composite.algorithm(EXAMPLE_ALG)
@@ -438,7 +585,17 @@ def cms_example():
     rnd.done()
     ca = _CA(mldsa.MLDSA65PrivateKey.from_seed_bytes(v["CA ML-DSA-65 seed"]),
              "Composite FrodoKEM CMS example CA", EXAMPLE_NOT_BEFORE)
+    earlier_certs = _certificates(earlier) if earlier is not None else []
+    if len(earlier_certs) == 2:         # Bob's certificate, then the CA's
+        if _tbs(earlier_certs[1]) == _tbs(ca.der):
+            ca.der = earlier_certs[1]
+            if not pkix.Certificate(ca.der).verify_signature(pkix.Certificate(ca.der)):
+                raise AssertionError("the earlier example CA certificate does not verify")
     cert_der = ca.issue(alg, ek, 2)
+    if len(earlier_certs) == 2 and _tbs(earlier_certs[0]) == _tbs(cert_der):
+        cert_der = earlier_certs[0]
+        if not pkix.Certificate(cert_der).verify_signature(pkix.Certificate(ca.der)):
+            raise AssertionError("Bob's earlier example certificate does not verify")
     cert = pkix.Certificate(cert_der)
     key_der = pkix.encode_private_key(alg, dk)
 
@@ -592,14 +749,16 @@ def cms_example():
 
 def main(argv):
     if len(argv) == 2:
-        keys_from = None
+        run = lambda: generate(argv[1])
     elif len(argv) == 4 and argv[2] == "--keys":
-        keys_from = argv[3]
+        run = lambda: generate(argv[1], keys_from=argv[3])
+    elif len(argv) == 4 and argv[2] == "--relabel":
+        run = lambda: relabel(argv[3], argv[1])
     else:
-        sys.stderr.write("usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON]\n")
+        sys.stderr.write("usage: python3 generate_vectors.py OUTPUT_DIR [--keys TESTVECTORS_JSON | --relabel VECTORS_DIR]\n")
         return 2
     try:
-        tests, messages = generate(argv[1], keys_from=keys_from)
+        tests, messages = run()
     except RuntimeError as e:
         sys.stderr.write(str(e) + "\n")
         return 1

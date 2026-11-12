@@ -77,7 +77,12 @@ these vectors use the prototype OIDs listed in the IETF Hackathon
 The OIDs appear only in the certificates, the OneAsymmetricKey encodings and the CMS messages. They
 are not an input to the combiner: the Label is.
 
-An earlier version of these -02 vectors used other placeholder OIDs. When the OIDs changed, the
-vectors were written again with `generate_vectors.py --keys`, which keeps the key pairs: `ek`, `dk`,
-`c`, `k` and every combiner intermediate are unchanged, and only the CA, the certificates, the
-OneAsymmetricKey encodings and the CMS messages are new.
+Earlier versions of these -02 vectors used other placeholder OIDs, and other Labels for the four
+RSA combinations. When the OIDs changed, the vectors were written again with
+`generate_vectors.py --keys`, which keeps the key pairs: `ek`, `dk`, `c`, `k` and every combiner
+intermediate were unchanged, and only the CA, the certificates, the OneAsymmetricKey encodings and
+the CMS messages were new. When the RSA Labels changed to their RSAOAEP form, the vectors were
+written again with `generate_vectors.py --relabel`, which keeps everything that does not depend on
+a Label. Only `k` of the four RSA test cases, their Label, combiner input length and `ss` in
+`combiner-intermediates.txt`, and the `encryptedKey` of each KEMRecipientInfo for those four
+algorithms changed.

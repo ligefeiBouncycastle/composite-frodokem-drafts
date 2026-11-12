@@ -78,14 +78,26 @@ the vectors to new OIDs without changing their key material:
 python3 generate_vectors.py OUTPUT_DIR --keys OLD/testvectors.json
 ```
 
+With `--relabel`, everything is read from an earlier output directory, and only the values that
+depend on a KEM Combiner Label are computed again, with the Labels this implementation now uses:
+`k`, the combiner `ss`, and the `encryptedKey` of each KEMRecipientInfo, which wraps the same CEK
+under the KEK of the new shared secret. The earlier Labels are read from the earlier
+`combiner-intermediates.txt`. Every other value is kept, and checked first: the certificates, the
+key encodings, the ciphertexts, the CEKs, the IVs and nonces, and every value of an algorithm whose
+Label is unchanged. This follows a change of Labels:
+
+```
+python3 generate_vectors.py OUTPUT_DIR --relabel OLD
+```
+
 `cms.json` lists 13 CMS messages, each an object with `label`, `recipients` (the `tcId`s of the
 test cases whose keys can open it), `content` and `cms` (both base64; `cms` is a DER ContentInfo).
 The content is always `Hello, world!`, and the key wrap is always AES-Wrap-256. The messages are:
 
 - EnvelopedData with AES-256-CBC and an issuerAndSerialNumber rid, one for each algorithm.
 - EnvelopedData with a subjectKeyIdentifier rid, and one with a ukm.
-- AuthEnvelopedData with AES-256-GCM, for FrodoKEM976-SHAKE-X25519 and for
-  FrodoKEM1344-AES-RSA4096.
+- AuthEnvelopedData with AES-256-GCM, for id-FrodoKEM976-SHAKE-X25519-SHA3-256 and for
+  id-FrodoKEM1344-AES-RSA4096-SHA3-256.
 - EnvelopedData with two recipients.
 
 ## Choices this implementation makes
@@ -102,7 +114,8 @@ The content is always `Hello, world!`, and the key wrap is always AES-Wrap-256. 
   encoding". This implementation assumes the raw 32- or 56-byte RFC 7748 private key, not an RFC
   8410 CurvePrivateKey, so dk ends with exactly 32 or 56 bytes after the FrodoKEM private key.
 - **Labels.** As listed in section 5.1, e.g. "FrodoKEM976-SHAKE-X25519" and
-  "FrodoKEM976-AES-X25519".
+  "FrodoKEM976-AES-X25519". The Label of an RSA combination names RSA-OAEP where the OID name says
+  RSA: "FrodoKEM976-SHAKE-RSAOAEP3072" for id-FrodoKEM976-SHAKE-RSA3072-SHA3-256.
 - **Decaps input checks.** The ciphertext must be exactly the algorithm's length: the FrodoKEM
   ciphertext plus 384 or 512 bytes for RSA, 32 for X25519, or 56 for X448. The RSA modulus must be
   exactly 3072 or 4096 bits.

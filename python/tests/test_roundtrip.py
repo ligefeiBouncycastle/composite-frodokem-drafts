@@ -75,13 +75,13 @@ class RoundTripTest(unittest.TestCase):
 
     def test_names_labels_and_oids(self):
         # draft-song-lamps-pq-composite-frodokem-02 section 5.1, TBD1 to TBD8 in order
-        table = (("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256", b"FrodoKEM976-SHAKE-RSA3072", "FrodoKEM-976-SHAKE", "RSA"),
+        table = (("id-FrodoKEM976-SHAKE-RSA3072-SHA3-256", b"FrodoKEM976-SHAKE-RSAOAEP3072", "FrodoKEM-976-SHAKE", "RSA"),
                  ("id-FrodoKEM976-SHAKE-X25519-SHA3-256", b"FrodoKEM976-SHAKE-X25519", "FrodoKEM-976-SHAKE", "X25519"),
-                 ("id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256", b"FrodoKEM1344-SHAKE-RSA4096", "FrodoKEM-1344-SHAKE", "RSA"),
+                 ("id-FrodoKEM1344-SHAKE-RSA4096-SHA3-256", b"FrodoKEM1344-SHAKE-RSAOAEP4096", "FrodoKEM-1344-SHAKE", "RSA"),
                  ("id-FrodoKEM1344-SHAKE-X448-SHA3-256", b"FrodoKEM1344-SHAKE-X448", "FrodoKEM-1344-SHAKE", "X448"),
-                 ("id-FrodoKEM976-AES-RSA3072-SHA3-256", b"FrodoKEM976-AES-RSA3072", "FrodoKEM-976-AES", "RSA"),
+                 ("id-FrodoKEM976-AES-RSA3072-SHA3-256", b"FrodoKEM976-AES-RSAOAEP3072", "FrodoKEM-976-AES", "RSA"),
                  ("id-FrodoKEM976-AES-X25519-SHA3-256", b"FrodoKEM976-AES-X25519", "FrodoKEM-976-AES", "X25519"),
-                 ("id-FrodoKEM1344-AES-RSA4096-SHA3-256", b"FrodoKEM1344-AES-RSA4096", "FrodoKEM-1344-AES", "RSA"),
+                 ("id-FrodoKEM1344-AES-RSA4096-SHA3-256", b"FrodoKEM1344-AES-RSAOAEP4096", "FrodoKEM-1344-AES", "RSA"),
                  ("id-FrodoKEM1344-AES-X448-SHA3-256", b"FrodoKEM1344-AES-X448", "FrodoKEM-1344-AES", "X448"))
         got = [(a.oid_name, a.label, a.frodo.name, a.trad) for a in composite.ALGORITHMS]
         self.assertEqual(got, list(table))

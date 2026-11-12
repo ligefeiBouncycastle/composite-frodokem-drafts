@@ -51,21 +51,22 @@ class CompositeAlgorithm(object):
         return self.oid_name
 
 
-# Section 5.1, in the order of TBD1 to TBD8, with the Label each entry gives.
+# Section 5.1, in the order of TBD1 to TBD8, with the Label each entry gives. The Label of an RSA
+# combination names RSA-OAEP ("RSAOAEP3072") where its OID name says "RSA3072".
 ALGORITHMS = (
-    CompositeAlgorithm("FrodoKEM976-SHAKE-RSA3072-SHA3-256", "FrodoKEM976-SHAKE-RSA3072",
+    CompositeAlgorithm("FrodoKEM976-SHAKE-RSA3072-SHA3-256", "FrodoKEM976-SHAKE-RSAOAEP3072",
                        frodokem.FRODOKEM_976_SHAKE, "RSA", 3072),
     CompositeAlgorithm("FrodoKEM976-SHAKE-X25519-SHA3-256", "FrodoKEM976-SHAKE-X25519",
                        frodokem.FRODOKEM_976_SHAKE, "X25519"),
-    CompositeAlgorithm("FrodoKEM1344-SHAKE-RSA4096-SHA3-256", "FrodoKEM1344-SHAKE-RSA4096",
+    CompositeAlgorithm("FrodoKEM1344-SHAKE-RSA4096-SHA3-256", "FrodoKEM1344-SHAKE-RSAOAEP4096",
                        frodokem.FRODOKEM_1344_SHAKE, "RSA", 4096),
     CompositeAlgorithm("FrodoKEM1344-SHAKE-X448-SHA3-256", "FrodoKEM1344-SHAKE-X448",
                        frodokem.FRODOKEM_1344_SHAKE, "X448"),
-    CompositeAlgorithm("FrodoKEM976-AES-RSA3072-SHA3-256", "FrodoKEM976-AES-RSA3072",
+    CompositeAlgorithm("FrodoKEM976-AES-RSA3072-SHA3-256", "FrodoKEM976-AES-RSAOAEP3072",
                        frodokem.FRODOKEM_976_AES, "RSA", 3072),
     CompositeAlgorithm("FrodoKEM976-AES-X25519-SHA3-256", "FrodoKEM976-AES-X25519",
                        frodokem.FRODOKEM_976_AES, "X25519"),
-    CompositeAlgorithm("FrodoKEM1344-AES-RSA4096-SHA3-256", "FrodoKEM1344-AES-RSA4096",
+    CompositeAlgorithm("FrodoKEM1344-AES-RSA4096-SHA3-256", "FrodoKEM1344-AES-RSAOAEP4096",
                        frodokem.FRODOKEM_1344_AES, "RSA", 4096),
     CompositeAlgorithm("FrodoKEM1344-AES-X448-SHA3-256", "FrodoKEM1344-AES-X448",
                        frodokem.FRODOKEM_1344_AES, "X448"),
